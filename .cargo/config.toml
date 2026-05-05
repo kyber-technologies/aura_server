@@ -1,0 +1,23 @@
+[build]
+jobs = 1
+rustflags = ["--cfg", "tokio_unstable"]
+
+[env]
+RUST_TEST_THREADS = "1"
+
+[profile.dev]
+debug = 1
+codegen-units = 16
+rustflags = ["--cfg", "tokio_unstable", "-Zshare-generics=y"]
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+opt-level = 3
+
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld.exe"
+rustdocflags = ["-Clinker=rust-lld.exe"]
+rustflags = ["--cfg", "tokio_unstable", "-Zshare-generics=y", "-Clink-arg=/DEBUG:GHASH"]

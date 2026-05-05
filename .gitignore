@@ -1,0 +1,6 @@
+/target
+/.idea
+/dev/database
+/dev/resources/*
+!/dev/resources/elysium/
+!/dev/resources/elysium/**
