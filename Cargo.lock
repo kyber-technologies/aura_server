@@ -204,7 +204,7 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 [[package]]
 name = "aura_rust"
 version = "0.1.0"
-source = "git+https://github.com/kyber-technologies/aura_proto.git#d701c283fa8a571436daf93a618af37d770da001"
+source = "git+https://github.com/kyber-technologies/aura_proto.git#d692b42f672ba84dc995e0a86d3d2e724ea926a1"
 dependencies = [
  "prost",
  "serde",

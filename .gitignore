@@ -2,5 +2,5 @@
 /.idea
 /dev/database
 /dev/resources/*
-!/dev/resources/elysium/
-!/dev/resources/elysium/**
+!/dev/resources/aura/
+!/dev/resources/aura/**
