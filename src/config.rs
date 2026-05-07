@@ -425,7 +425,7 @@ impl Default for Config {
                 "./secure/database-password"
             }
             .to_string(),
-            email_smtp: "smtp://0.0.0.0:1025".to_string(), // Default Mailhog SMTP Server
+            email_smtp: "127.0.0.1:1025".to_string(), // Default Mailhog SMTP Server
             email_smtp_user: "user".to_string(),
             email_smtp_password: if cfg!(debug_assertions) {
                 "./dev/smtp-password"

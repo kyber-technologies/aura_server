@@ -46,7 +46,7 @@ password = "./dev/database-password"
 
 [email]
 # SMTP server address.
-smtp = "smtp://0.0.0.0:1025"
+smtp = "127.0.0.1:1025"
 # SMTP server username.
 smtp_user = "user"
 # Path to the file containing the password for the SMTP user.
@@ -67,4 +67,3 @@ level = "info"
 threads = false
 # Should log records contain timestamps.
 time = false
-        

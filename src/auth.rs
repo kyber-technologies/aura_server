@@ -43,24 +43,6 @@ pub async fn init() {
     .expect("Failed to initialize argon2 keys");
 }
 
-pub async fn verify_role<T>(
-    database: &Database,
-    req: &Request<T>,
-    target: UserRole,
-) -> Result<User, Error> {
-    let user = verify(database, req).await?;
-    let target: i32 = target.into();
-
-    if user.role < target {
-        Err(Error::new(
-            ErrorCode::Unauthorized,
-            "Insufficient permissions",
-        ))
-    } else {
-        Ok(user)
-    }
-}
-
 pub async fn verify<T>(database: &Database, req: &Request<T>) -> Result<User, Error> {
     let meta = req.metadata();
 

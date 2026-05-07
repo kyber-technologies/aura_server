@@ -84,11 +84,12 @@ impl Service {
     ) -> Result<DeleteUserResponse, Error> {
         let database = self.state.database();
 
-        auth::verify_role(database, &request, UserRole::Admin).await?;
+        let user = auth::verify(database, &request).await?;
+        let password = request.into_inner().password;
 
-        let user = request.into_inner().user_id;
+        auth::auth(database, user.user_id.clone(), password).await?;
 
-        user::delete(database, &user).await?;
+        user::delete(database, &user.user_id).await?;
 
         Ok(DeleteUserResponse { error: None })
     }
@@ -99,18 +100,23 @@ impl Service {
     ) -> Result<UpdateUserResponse, Error> {
         let database = self.state.database();
 
-        auth::verify_role(database, &request, UserRole::Admin).await?;
+        let mut user = auth::verify(database, &request).await?;
+        let request = request.into_inner();
 
-        let mut user = request.into_inner().user.ok_or(Error::invalid_argument())?;
+        user.username = request.username.unwrap_or(user.username);
+        user.email = request.email.unwrap_or(user.email);
+        user.password = request
+            .password
+            .map(auth::hash)
+            .unwrap_or(Ok(user.password))
+            .map_err(|err| {
+                Error::new(
+                    ErrorCode::Internal,
+                    format!("Hashing password failed: {err}"),
+                )
+            })?;
 
-        user.password = auth::hash(user.password).map_err(|err| {
-            Error::new(
-                ErrorCode::Internal,
-                format!("Hashing password failed: {err}"),
-            )
-        })?;
-
-        user::update(database, User::try_from(user)?).await?;
+        user::update(database, user).await?;
 
         Ok(UpdateUserResponse { error: None })
     }

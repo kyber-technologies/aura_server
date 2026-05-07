@@ -28,11 +28,16 @@ impl EmailRegister {
 
         let creds = Credentials::new(config.email_smtp_user.clone(), pass.to_string());
 
+        let (addr, port) = config
+            .email_smtp
+            .split_once(':')
+            .expect("Invalid SMTP address");
+
         Self {
             register: DashMap::with_capacity(10),
             // TODO: make this configurable
-            trans: SmtpTransport::from_url(&config.email_smtp)
-                .expect("Failed to build SMTP Transport")
+            trans: SmtpTransport::builder_dangerous(addr)
+                .port(port.parse().expect("Failed to parse SMTP transport port"))
                 .credentials(creds)
                 .build(),
         }
