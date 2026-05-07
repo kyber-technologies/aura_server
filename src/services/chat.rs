@@ -5,11 +5,10 @@ use aura_rust::chat::v1::chat_service_server::ChatService;
 use aura_rust::chat::v1::{
     ChannelPermission, CreateChannelRequest, CreateChannelResponse, DeleteMessageRequest,
     DeleteMessageResponse, ReadMessagesRequest, ReadMessagesResponse, SendMessageRequest,
-    SendMessageResponse, UpdateMessageRequest, UpdateMessageResponse, create_channel_response,
-    send_message_response, update_message_response,
+    SendMessageResponse, create_channel_response, send_message_response,
 };
 use aura_rust::common::v1::ErrorCode;
-use aura_rust::{Channel, Content, Message, Timestamp};
+use aura_rust::{Channel, Message, Timestamp};
 use tonic::{Request, Response, Status};
 
 pub struct Service {
@@ -146,40 +145,6 @@ impl Service {
             ))
         }
     }
-
-    async fn _update_message(
-        &self,
-        request: Request<UpdateMessageRequest>,
-    ) -> Result<UpdateMessageResponse, Error> {
-        let database = self.state.database();
-
-        let user = auth::verify(database, &request).await?;
-        let msg_args = request.into_inner();
-        let message = chat::get_msg(database, &msg_args.message_id)
-            .await?
-            .ok_or(Error::new(ErrorCode::NotFound, "Message not found"))?;
-        let mut content = Content::try_from(msg_args.content.ok_or(Error::invalid_argument())?)?;
-
-        let perm =
-            chat::get_channel_member_perm(database, &message.channel_id, &user.user_id).await?;
-
-        if perm == ChannelPermission::Manager
-            || (perm == ChannelPermission::ReadWrite && message.user_id == user.user_id)
-        {
-            content.created_at = utils::get_timestamp();
-
-            let message = chat::update_message(database, &message.message_id, content).await?;
-
-            Ok(UpdateMessageResponse {
-                result: Some(update_message_response::Result::Message(message.into())),
-            })
-        } else {
-            Err(Error::new(
-                ErrorCode::Unauthorized,
-                "User has no permission to update this message",
-            ))
-        }
-    }
 }
 
 #[tonic::async_trait]
@@ -236,20 +201,6 @@ impl ChatService for Service {
                 .await
                 .unwrap_or_else(|err| DeleteMessageResponse {
                     error: Some(err.into()),
-                });
-
-        Ok(Response::new(resp))
-    }
-
-    async fn update_message(
-        &self,
-        request: Request<UpdateMessageRequest>,
-    ) -> Result<Response<UpdateMessageResponse>, Status> {
-        let resp =
-            self._update_message(request)
-                .await
-                .unwrap_or_else(|err| UpdateMessageResponse {
-                    result: Some(update_message_response::Result::Error(err.into())),
                 });
 
         Ok(Response::new(resp))

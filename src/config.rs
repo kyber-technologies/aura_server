@@ -57,9 +57,15 @@ pub struct Config {
     pub rt_event_interval: u32,
     pub rt_worker_threads: usize,
     pub rt_max_blocking_threads: usize,
+    pub rt_maintain_interval: u64,
     pub db_address: String,
     pub db_user: String,
     pub db_password: String,
+    pub email_smtp: String,
+    pub email_smtp_user: String,
+    pub email_smtp_password: String,
+    pub email_exp: u64,
+    pub email_no_reply_mail: String,
     pub log_file_names: bool,
     pub log_targets: bool,
     pub log_level: String,
@@ -155,6 +161,11 @@ impl Config {
             .expect("Failed parsing 'runtime.max_blocking_threads' field")
             as usize;
 
+        let rt_maintain_interval = runtime
+            .get_integer("maintain_interval")
+            .expect("Failed parsing 'runtime.maintain_interval' field")
+            as u64;
+
         let database = toml
             .get_table("database")
             .expect("Failed parsing 'database' table");
@@ -172,6 +183,34 @@ impl Config {
         let db_password = database
             .get_string("password")
             .expect("Failed parsing 'database.password' field")
+            .to_string();
+
+        let email = toml
+            .get_table("email")
+            .expect("Failed parsing 'email' table");
+
+        let email_smtp = email
+            .get_string("smtp")
+            .expect("Failed parsing 'email.smtp' table")
+            .to_string();
+
+        let email_smtp_user = email
+            .get_string("smtp_user")
+            .expect("Failed parsing 'email.smtp_user' field")
+            .to_string();
+
+        let email_smtp_password = email
+            .get_string("smtp_password")
+            .expect("Failed parsing 'email.smtp_password' field")
+            .to_string();
+
+        let email_exp = email
+            .get_integer("expiration")
+            .expect("Failed parsing 'email.expiration' field") as u64;
+
+        let email_no_reply_mail = email
+            .get_string("no_reply_mail")
+            .expect("Failed parsing 'email.no_reply_mail' field")
             .to_string();
 
         let logging = toml
@@ -214,9 +253,15 @@ impl Config {
             rt_event_interval,
             rt_worker_threads,
             rt_max_blocking_threads,
+            rt_maintain_interval,
             db_address,
             db_user,
             db_password,
+            email_smtp,
+            email_smtp_user,
+            email_smtp_password,
+            email_exp,
+            email_no_reply_mail,
             log_file_names,
             log_targets,
             log_level,
@@ -248,9 +293,15 @@ impl Config {
             rt_event_interval,
             rt_worker_threads,
             rt_max_blocking_threads,
+            rt_maintain_interval,
             db_address,
             db_user,
             db_password,
+            email_smtp,
+            email_smtp_user,
+            email_smtp_password,
+            email_exp,
+            email_no_reply_mail,
             log_file_names,
             log_targets,
             log_level,
@@ -294,6 +345,8 @@ event_interval = {rt_event_interval}
 worker_threads = {rt_worker_threads}
 # Maximum threads to spawn for blocking operations.
 max_blocking_threads = {rt_max_blocking_threads}
+# Maintainance interval in seconds.
+maintain_interval = {rt_maintain_interval}
 
 [database]
 # Address to the SurrealDB database server.
@@ -302,6 +355,18 @@ address = "{db_address}"
 user = "{db_user}"
 # Path to the file containing the password for the SurrealDB user.
 password = "{db_password}"
+
+[email]
+# SMTP server address.
+smtp = "{email_smtp}"
+# SMTP server username.
+smtp_user = "{email_smtp_user}"
+# Path to the file containing the password for the SMTP user.
+smtp_password = "{email_smtp_password}"
+# Email expiration time in seconds.
+expiration = {email_exp}
+# Email to send from.
+no_reply_mail = "{email_no_reply_mail}"
 
 [logging]
 # Should log records contain file names.
@@ -351,6 +416,7 @@ impl Default for Config {
             rt_event_interval: 61,
             rt_worker_threads: 4,
             rt_max_blocking_threads: 256,
+            rt_maintain_interval: 60 * 10,
             db_address: "127.0.0.1:8000".to_string(),
             db_user: "root".to_string(),
             db_password: if cfg!(debug_assertions) {
@@ -359,6 +425,16 @@ impl Default for Config {
                 "./secure/database-password"
             }
             .to_string(),
+            email_smtp: "smtp://0.0.0.0:1025".to_string(), // Default Mailhog SMTP Server
+            email_smtp_user: "user".to_string(),
+            email_smtp_password: if cfg!(debug_assertions) {
+                "./dev/smtp-password"
+            } else {
+                "./secure/smtp-password"
+            }
+            .to_string(),
+            email_exp: 3600,
+            email_no_reply_mail: "no-reply@aura.social".to_string(),
             log_file_names: false,
             log_targets: false,
             log_level: "info".to_string(),

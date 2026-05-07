@@ -33,6 +33,8 @@ event_interval = 61
 worker_threads = 4
 # Maximum threads to spawn for blocking operations.
 max_blocking_threads = 256
+# Maintainance interval in seconds.
+maintain_interval = 600
 
 [database]
 # Address to the SurrealDB database server.
@@ -41,6 +43,18 @@ address = "127.0.0.1:8000"
 user = "root"
 # Path to the file containing the password for the SurrealDB user.
 password = "./dev/database-password"
+
+[email]
+# SMTP server address.
+smtp = "smtp://0.0.0.0:1025"
+# SMTP server username.
+smtp_user = "user"
+# Path to the file containing the password for the SMTP user.
+smtp_password = "./dev/smtp-password"
+# Email expiration time in seconds.
+expiration = 3600
+# Email to send from.
+no_reply_mail = "no-reply@aura.social"
 
 [logging]
 # Should log records contain file names.

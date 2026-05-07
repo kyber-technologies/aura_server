@@ -2,8 +2,7 @@ use crate::database::Database;
 use crate::error::Error;
 use aura_rust::chat::v1::ChannelPermission;
 use aura_rust::common::v1::ErrorCode;
-use aura_rust::{Channel, Content, Message, Timestamp};
-use surrealdb::opt::PatchOp;
+use aura_rust::{Channel, Message, Timestamp};
 
 pub const ID_LENGTH: usize = 10;
 
@@ -99,23 +98,6 @@ pub async fn delete_message(database: &Database, message_id: &str) -> Result<(),
         let _: Option<Message> = database.delete(("message", message_id)).await?;
 
         Ok(())
-    } else {
-        Err(Error::new(ErrorCode::NotFound, "Message not found"))
-    }
-}
-
-pub async fn update_message(
-    database: &Database,
-    message_id: &str,
-    content: Content,
-) -> Result<Message, Error> {
-    if msg_exists(database, message_id).await? {
-        let message: Option<Message> = database
-            .update(("message", message_id))
-            .patch(PatchOp::replace("/content", content))
-            .await?;
-
-        message.ok_or(Error::new(ErrorCode::Internal, "Failed to update message"))
     } else {
         Err(Error::new(ErrorCode::NotFound, "Message not found"))
     }

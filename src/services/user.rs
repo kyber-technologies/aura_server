@@ -6,10 +6,10 @@ use aura_rust::user::v1::user_service_server::UserService;
 use aura_rust::user::v1::{
     AuthUserRequest, AuthUserResponse, CreateUserRequest, CreateUserResponse, DeleteUserRequest,
     DeleteUserResponse, GetUserRequest, GetUserResponse, SearchUsersRequest, SearchUsersResponse,
-    UpdateUserAvatarRequest, UpdateUserAvatarResponse, UpdateUserRequest, UpdateUserResponse,
-    UserRole, auth_user_response, get_user_response,
+    UpdateUserRequest, UpdateUserResponse, UserRole, VerifyEmailRequest, VerifyEmailResponse,
+    auth_user_response, get_user_response,
 };
-use aura_rust::{ResourceId, User};
+use aura_rust::{DEFAULT_USER_ICON, User};
 use tonic::{Request, Response, Status};
 
 pub struct Service {
@@ -34,15 +34,37 @@ impl Service {
         })
     }
 
+    async fn _verify_email(
+        &self,
+        request: Request<VerifyEmailRequest>,
+    ) -> Result<VerifyEmailResponse, Error> {
+        let VerifyEmailRequest { email } = request.into_inner();
+
+        self.state.emails().register_email(email)?;
+
+        Ok(VerifyEmailResponse { error: None })
+    }
+
     async fn _create_user(
         &self,
         request: Request<CreateUserRequest>,
     ) -> Result<CreateUserResponse, Error> {
         let database = self.state.database();
 
-        auth::verify_role(database, &request, UserRole::Admin).await?;
+        let request = request.into_inner();
 
-        let mut user = request.into_inner().user.ok_or(Error::invalid_argument())?;
+        self.state
+            .emails()
+            .verify_email(&request.email, request.verification_token)?;
+
+        let mut user = User {
+            user_id: request.user_id,
+            username: request.username,
+            email: request.email.clone(),
+            password: request.password,
+            role: UserRole::UserUnspecified as i32,
+            icon: DEFAULT_USER_ICON.clone(),
+        };
 
         user.password = auth::hash(user.password).map_err(|err| {
             Error::new(
@@ -51,7 +73,7 @@ impl Service {
             )
         })?;
 
-        user::create(database, User::try_from(user.clone())?).await?;
+        user::create(database, user).await?;
 
         Ok(CreateUserResponse { error: None })
     }
@@ -91,30 +113,6 @@ impl Service {
         user::update(database, User::try_from(user)?).await?;
 
         Ok(UpdateUserResponse { error: None })
-    }
-
-    async fn _update_user_avatar(
-        &self,
-        request: Request<UpdateUserAvatarRequest>,
-    ) -> Result<UpdateUserAvatarResponse, Error> {
-        let database = self.state.database();
-
-        let user = auth::verify(database, &request).await?;
-
-        let avatar = request
-            .into_inner()
-            .avatar
-            .ok_or(Error::invalid_argument())?;
-
-        let mut user = user::get(database, &user.user_id)
-            .await?
-            .ok_or(Error::new(ErrorCode::NotFound, "User not found"))?;
-
-        user.icon = ResourceId::try_from(avatar)?;
-
-        user::update(database, user).await?;
-
-        Ok(UpdateUserAvatarResponse { error: None })
     }
 
     async fn _get_user(&self, request: Request<GetUserRequest>) -> Result<GetUserResponse, Error> {
@@ -163,6 +161,20 @@ impl UserService for Service {
         Ok(Response::new(resp))
     }
 
+    async fn verify_email(
+        &self,
+        request: Request<VerifyEmailRequest>,
+    ) -> Result<Response<VerifyEmailResponse>, Status> {
+        let resp = self
+            ._verify_email(request)
+            .await
+            .unwrap_or_else(|err| VerifyEmailResponse {
+                error: Some(err.into()),
+            });
+
+        Ok(Response::new(resp))
+    }
+
     async fn create_user(
         &self,
         request: Request<CreateUserRequest>,
@@ -199,20 +211,6 @@ impl UserService for Service {
             ._update_user(request)
             .await
             .unwrap_or_else(|err| UpdateUserResponse {
-                error: Some(err.into()),
-            });
-
-        Ok(Response::new(resp))
-    }
-
-    async fn update_user_avatar(
-        &self,
-        request: Request<UpdateUserAvatarRequest>,
-    ) -> Result<Response<UpdateUserAvatarResponse>, Status> {
-        let resp = self
-            ._update_user_avatar(request)
-            .await
-            .unwrap_or_else(|err| UpdateUserAvatarResponse {
                 error: Some(err.into()),
             });
 

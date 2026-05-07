@@ -20,6 +20,7 @@ mod chat;
 mod config;
 mod connect_info;
 mod database;
+mod email;
 mod error;
 mod resource;
 mod services;
@@ -56,20 +57,26 @@ fn main() {
             tracing::info!("Initializing authentication...");
             auth::init().await;
 
+            tracing::info!("Initializing server state...");
+            let state = ServerState::new().await;
+
             tokio::select! {
-                _ = serve() => (),
-                _ = exit_signal() => (),
+                _ = serve(state.clone()) => (),
+                _ = exit_signal(state) => (),
             }
         });
 }
 
-async fn serve() {
+async fn serve(state: ServerState) {
     let config = config::get();
 
     let addr = SocketAddr::from_str(config.net_address.as_str()).expect("Failed to parse address");
 
-    tracing::info!("Initializing Server State...");
-    let state = ServerState::new().await;
+    tracing::info!("Launching maintenance loop...");
+    let state2 = state.clone();
+    tokio::task::spawn(async move {
+        state2.maintain().await;
+    });
 
     // Create initial admin if not present
     user::create_admin(state.database())
@@ -130,10 +137,12 @@ async fn serve() {
         .expect("Failed to serve aura service");
 }
 
-async fn exit_signal() {
+async fn exit_signal(state: ServerState) {
     tokio::signal::ctrl_c()
         .await
         .expect("Failed to get Ctrl+C signal");
+
+    state.set_exit();
 
     tracing::info!("Shutting down aura...");
 }
