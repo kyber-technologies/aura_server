@@ -76,18 +76,21 @@ impl EmailRegister {
     }
 
     pub fn verify_email(&self, email: &String, token: String) -> Result<(), Error> {
-        let entry = self
-            .register
-            .get(email)
+        let entry_token = self
+            .get_email_token(email)
             .ok_or(Error::new(ErrorCode::NotFound, "E-Mail not found"))?;
 
-        if token != entry.token {
+        if token != entry_token {
             return Err(Error::new(ErrorCode::Unauthorized, "Invalid token"));
         }
 
         self.register.remove(email);
 
         Ok(())
+    }
+
+    pub fn get_email_token(&self, email: &String) -> Option<String> {
+        self.register.get(email).map(|e| e.token.clone())
     }
 
     pub fn maintain(&self) {

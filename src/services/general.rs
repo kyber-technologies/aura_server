@@ -4,6 +4,7 @@ use crate::utils::RESOURCE_CHUNK_SIZE;
 use aura_rust::general::v1::general_service_server::GeneralService;
 use aura_rust::general::v1::{
     ClearStateRequest, ClearStateResponse, GetConfigRequest, GetConfigResponse,
+    GetEmailTokenRequest, GetEmailTokenResponse,
 };
 use tonic::{Request, Response, Status};
 
@@ -59,6 +60,26 @@ impl GeneralService for Service {
         #[cfg(not(feature = "testing"))]
         Err(Status::failed_precondition("Server not in testing mode"))
     }
+
+    async fn get_email_token(
+        &self,
+        _request: Request<GetEmailTokenRequest>,
+    ) -> Result<Response<GetEmailTokenResponse>, Status> {
+        #[cfg(feature = "testing")]
+        {
+            let email = _request.into_inner().email;
+            let token = self
+                .state
+                .emails()
+                .get_email_token(&email)
+                .expect("Failed to get email token");
+
+            Ok(Response::new(GetEmailTokenResponse { token }))
+        }
+
+        #[cfg(not(feature = "testing"))]
+        Err(Status::failed_precondition("Server not in testing mode"))
+    }
 }
 
 #[cfg(feature = "testing")]
@@ -106,7 +127,7 @@ REMOVE TABLE resource;"#,
             email: "foo@bar.baz".to_string(),
             password: crate::auth::hash(TEST_SUPERVISOR_PASS.to_string())
                 .expect("Failed to hash supervisor password"),
-            role: aura_rust::user::v1::UserRole::Supervisor as i32,
+            role: aura_rust::user::v1::UserRole::Moderator as i32,
             icon: crate::resource::build_user_avatar_id(TEST_SUPERVISOR_NAME),
         },
     )
