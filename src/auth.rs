@@ -4,7 +4,6 @@ use crate::{config, user};
 use argon2::password_hash::phc::Salt;
 use argon2::{Argon2, Params, PasswordHasher, PasswordVerifier, Version};
 use aura_rust::common::v1::ErrorCode;
-use aura_rust::user::v1::UserRole;
 use aura_rust::{Auth, User};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use std::sync::OnceLock;
