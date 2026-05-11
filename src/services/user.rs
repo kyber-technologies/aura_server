@@ -6,8 +6,9 @@ use aura_rust::user::v1::user_service_server::UserService;
 use aura_rust::user::v1::{
     AuthUserRequest, AuthUserResponse, CreateUserRequest, CreateUserResponse, DeleteUserRequest,
     DeleteUserResponse, GetUserRequest, GetUserResponse, SearchUsersRequest, SearchUsersResponse,
-    UpdateUserRequest, UpdateUserResponse, UserRole, VerifyEmailRequest, VerifyEmailResponse,
-    auth_user_response, get_user_response,
+    UpdateUserRequest, UpdateUserResponse, UserExistsRequest, UserExistsResponse, UserRole,
+    VerifyEmailRequest, VerifyEmailResponse, auth_user_response, get_user_response,
+    user_exists_response,
 };
 use aura_rust::{DEFAULT_USER_ICON, User};
 use tonic::{Request, Response, Status};
@@ -19,6 +20,18 @@ pub struct Service {
 impl Service {
     pub fn new(state: ServerState) -> Self {
         Self { state }
+    }
+
+    async fn _user_exists(
+        &self,
+        request: Request<UserExistsRequest>,
+    ) -> Result<UserExistsResponse, Error> {
+        let user_id = request.into_inner().user_id;
+        let exists = user::exists(self.state.database(), &user_id).await?;
+
+        Ok(UserExistsResponse {
+            result: Some(user_exists_response::Result::Exists(exists)),
+        })
     }
 
     async fn _auth_user(
@@ -153,6 +166,20 @@ impl Service {
 
 #[tonic::async_trait]
 impl UserService for Service {
+    async fn user_exists(
+        &self,
+        request: Request<UserExistsRequest>,
+    ) -> Result<Response<UserExistsResponse>, Status> {
+        let resp = self
+            ._user_exists(request)
+            .await
+            .unwrap_or_else(|err| UserExistsResponse {
+                result: Some(user_exists_response::Result::Error(err.into())),
+            });
+
+        Ok(Response::new(resp))
+    }
+
     async fn auth_user(
         &self,
         request: Request<AuthUserRequest>,
