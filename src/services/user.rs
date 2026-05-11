@@ -8,7 +8,6 @@ use aura_rust::user::v1::{
     DeleteUserResponse, GetUserRequest, GetUserResponse, SearchUsersRequest, SearchUsersResponse,
     UpdateUserRequest, UpdateUserResponse, UserExistsRequest, UserExistsResponse, UserRole,
     VerifyEmailRequest, VerifyEmailResponse, auth_user_response, get_user_response,
-    user_exists_response,
 };
 use aura_rust::{DEFAULT_USER_ICON, User};
 use tonic::{Request, Response, Status};
@@ -30,7 +29,11 @@ impl Service {
         let exists = user::exists(self.state.database(), &user_id).await?;
 
         Ok(UserExistsResponse {
-            result: Some(user_exists_response::Result::Exists(exists)),
+            error: if exists {
+                Some(Error::new(ErrorCode::AlreadyExists, "User already exists").into())
+            } else {
+                None
+            },
         })
     }
 
@@ -174,7 +177,7 @@ impl UserService for Service {
             ._user_exists(request)
             .await
             .unwrap_or_else(|err| UserExistsResponse {
-                result: Some(user_exists_response::Result::Error(err.into())),
+                error: Some(err.into()),
             });
 
         Ok(Response::new(resp))
