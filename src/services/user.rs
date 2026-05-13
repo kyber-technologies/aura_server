@@ -4,10 +4,12 @@ use crate::{auth, user};
 use aura_rust::common::v1::ErrorCode;
 use aura_rust::user::v1::user_service_server::UserService;
 use aura_rust::user::v1::{
-    AuthUserRequest, AuthUserResponse, CreateUserRequest, CreateUserResponse, DeleteUserRequest,
-    DeleteUserResponse, GetUserRequest, GetUserResponse, SearchUsersRequest, SearchUsersResponse,
+    AuthUserRequest, AuthUserResponse, BlockUserRequest, BlockUserResponse, CreateUserRequest,
+    CreateUserResponse, DeleteUserRequest, DeleteUserResponse, GetUserRequest, GetUserResponse,
+    IsBlockedRequest, IsBlockedResponse, SearchUsersRequest, SearchUsersResponse,
     UpdateUserRequest, UpdateUserResponse, UserExistsRequest, UserExistsResponse, UserRole,
     VerifyEmailRequest, VerifyEmailResponse, auth_user_response, get_user_response,
+    is_blocked_response,
 };
 use aura_rust::{DEFAULT_USER_ICON, User};
 use tonic::{Request, Response, Status};
@@ -165,6 +167,34 @@ impl Service {
 
         Ok(SearchUsersResponse { users, error: None })
     }
+
+    async fn _block_user(
+        &self,
+        request: Request<BlockUserRequest>,
+    ) -> Result<BlockUserResponse, Error> {
+        let database = self.state.database();
+        let user = auth::verify(database, &request).await?;
+        let BlockUserRequest { user_id, block } = request.into_inner();
+
+        user::block(database, user.user_id, user_id, block).await?;
+
+        Ok(BlockUserResponse { error: None })
+    }
+
+    async fn _is_blocked(
+        &self,
+        request: Request<IsBlockedRequest>,
+    ) -> Result<IsBlockedResponse, Error> {
+        let database = self.state.database();
+        let user = auth::verify(database, &request).await?;
+        let block_user_id = request.into_inner().user_id;
+
+        let is_blocked = user::is_blocked_by(database, user.user_id, block_user_id).await?;
+
+        Ok(IsBlockedResponse {
+            result: Some(is_blocked_response::Result::Blocked(is_blocked)),
+        })
+    }
 }
 
 #[tonic::async_trait]
@@ -277,6 +307,34 @@ impl UserService for Service {
             .unwrap_or_else(|err| SearchUsersResponse {
                 users: Vec::new(),
                 error: Some(err.into()),
+            });
+
+        Ok(Response::new(resp))
+    }
+
+    async fn block_user(
+        &self,
+        request: Request<BlockUserRequest>,
+    ) -> Result<Response<BlockUserResponse>, Status> {
+        let resp = self
+            ._block_user(request)
+            .await
+            .unwrap_or_else(|err| BlockUserResponse {
+                error: Some(err.into()),
+            });
+
+        Ok(Response::new(resp))
+    }
+
+    async fn is_blocked(
+        &self,
+        request: Request<IsBlockedRequest>,
+    ) -> Result<Response<IsBlockedResponse>, Status> {
+        let resp = self
+            ._is_blocked(request)
+            .await
+            .unwrap_or_else(|err| IsBlockedResponse {
+                result: Some(is_blocked_response::Result::Error(err.into())),
             });
 
         Ok(Response::new(resp))

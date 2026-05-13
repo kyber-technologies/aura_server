@@ -56,26 +56,18 @@ pub async fn create(database: &Database, user: User) -> Result<(), Error> {
 }
 
 pub async fn delete(database: &Database, userid: &str) -> Result<(), Error> {
-    if exists(database, userid).await? {
-        let _: Option<User> = database.delete(("user", userid)).await?;
+    let _: Option<User> = database.delete(("user", userid)).await?;
 
-        Ok(())
-    } else {
-        Err(Error::new(ErrorCode::NotFound, "User not found"))
-    }
+    Ok(())
 }
 
 pub async fn update(database: &Database, user: User) -> Result<(), Error> {
-    if exists(database, &user.user_id).await? {
-        let _: Option<User> = database
-            .update(("user", user.user_id.as_str()))
-            .content(user)
-            .await?;
+    let _: Option<User> = database
+        .update(("user", user.user_id.as_str()))
+        .content(user)
+        .await?;
 
-        Ok(())
-    } else {
-        Err(Error::new(ErrorCode::NotFound, "User not found"))
-    }
+    Ok(())
 }
 
 pub async fn get(database: &Database, userid: &str) -> Result<Option<User>, Error> {
@@ -102,6 +94,60 @@ pub async fn search(database: &Database, query: String) -> Result<Vec<UserProfil
         .take::<Vec<User>>(0)?;
 
     Ok(results.into_iter().map(to_profile).collect())
+}
+
+pub async fn block(
+    database: &Database,
+    user_id: String,
+    block_user_id: String,
+    unblock: bool,
+) -> Result<(), Error> {
+    if !exists(database, &block_user_id).await? {
+        return Err(Error::new(ErrorCode::NotFound, "User not found"));
+    }
+
+    if unblock {
+        database
+            .query(
+                r#"DELETE blocked
+            WHERE in = user:$user_id
+            AND out = user:$block_user_id;"#,
+            )
+            .bind(("user_id", user_id))
+            .bind(("block_user_id", block_user_id))
+            .await?;
+    } else {
+        database
+            .query("RELATE user:$user_id->blocked->user:$block_user_id")
+            .bind(("user_id", user_id))
+            .bind(("block_user_id", block_user_id))
+            .await?;
+    }
+
+    Ok(())
+}
+
+pub async fn is_blocked_by(
+    database: &Database,
+    user_id: String,
+    block_user_id: String,
+) -> Result<bool, Error> {
+    if !exists(database, &block_user_id).await? {
+        return Err(Error::new(ErrorCode::NotFound, "User not found"));
+    }
+
+    let result: Option<()> = database
+        .query(
+            r#"SELECT * FROM blocked
+        WHERE in = user:$user_id
+        AND out = user:$block_user_id;"#,
+        )
+        .bind(("user_id", user_id))
+        .bind(("block_user_id", block_user_id))
+        .await?
+        .take(0)?;
+
+    Ok(result.is_some())
 }
 
 pub async fn exists(database: &Database, userid: &str) -> Result<bool, Error> {

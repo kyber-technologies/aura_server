@@ -47,6 +47,7 @@ impl From<ErrorCode> for Error {
                 ErrorCode::NotFound => "The requested item could not be found",
                 ErrorCode::AlreadyExists => "The requested item already exists",
                 ErrorCode::InvalidFormat => "An invalid message was given",
+                ErrorCode::Restricted => "You are not permitted to do that",
             },
         )
     }
