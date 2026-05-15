@@ -6,6 +6,7 @@ use crate::{auth, config, resource, utils};
 use aura_rust::common::v1::ErrorCode;
 use aura_rust::user::v1::{UserProfile, UserRole};
 use aura_rust::{ResourceMeta, User};
+use surrealdb::types::{Object, RecordId};
 use tonic::codegen::tokio_stream::StreamExt;
 
 pub async fn create(database: &Database, user: User) -> Result<(), Error> {
@@ -100,28 +101,30 @@ pub async fn block(
     database: &Database,
     user_id: String,
     block_user_id: String,
-    unblock: bool,
+    block: bool,
 ) -> Result<(), Error> {
     if !exists(database, &block_user_id).await? {
         return Err(Error::new(ErrorCode::NotFound, "User not found"));
     }
 
-    if unblock {
+    if block {
+        database
+            .query("RELATE $user->blocked->$block")
+            .bind(("user", RecordId::new("user", user_id)))
+            .bind(("block", RecordId::new("user", block_user_id)))
+            .await?
+            .check()?;
+    } else {
         database
             .query(
                 r#"DELETE blocked
-            WHERE in = user:$user_id
-            AND out = user:$block_user_id;"#,
+            WHERE in = $user
+            AND out = $block;"#,
             )
-            .bind(("user_id", user_id))
-            .bind(("block_user_id", block_user_id))
-            .await?;
-    } else {
-        database
-            .query("RELATE user:$user_id->blocked->user:$block_user_id")
-            .bind(("user_id", user_id))
-            .bind(("block_user_id", block_user_id))
-            .await?;
+            .bind(("user", RecordId::new("user", user_id)))
+            .bind(("block", RecordId::new("user", block_user_id)))
+            .await?
+            .check()?;
     }
 
     Ok(())
@@ -136,18 +139,19 @@ pub async fn is_blocked_by(
         return Err(Error::new(ErrorCode::NotFound, "User not found"));
     }
 
-    let result: Option<()> = database
+    let result: Vec<Object> = database
         .query(
-            r#"SELECT * FROM blocked
-        WHERE in = user:$user_id
-        AND out = user:$block_user_id;"#,
+            r#"SELECT id FROM blocked
+        WHERE in = $user
+        AND out = $block
+        LIMIT 1;"#,
         )
-        .bind(("user_id", user_id))
-        .bind(("block_user_id", block_user_id))
+        .bind(("user", RecordId::new("user", user_id)))
+        .bind(("block", RecordId::new("user", block_user_id)))
         .await?
         .take(0)?;
 
-    Ok(result.is_some())
+    Ok(!result.is_empty())
 }
 
 pub async fn exists(database: &Database, userid: &str) -> Result<bool, Error> {
