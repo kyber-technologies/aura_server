@@ -1,12 +1,32 @@
 use crate::database::Database;
 use crate::error::Error;
+use crate::{user, utils};
 use aura_rust::chat::v1::ChannelPermission;
 use aura_rust::common::v1::ErrorCode;
-use aura_rust::{Channel, Message, Timestamp};
+use aura_rust::{Channel, Message, Notification, NotificationType, Timestamp};
 
 pub const ID_LENGTH: usize = 10;
 
-pub async fn create_channel(database: &Database, channel: Channel) -> Result<Channel, Error> {
+pub async fn create_channel(
+    database: &Database,
+    channel: Channel,
+    owner: String,
+) -> Result<Channel, Error> {
+    for user_id in channel.members.keys() {
+        user::push_notifications(
+            database,
+            user_id,
+            [Notification {
+                timestamp: utils::get_timestamp(),
+                ty: NotificationType::Invite {
+                    channel_id: channel.channel_id.clone(),
+                    invited_by: owner.clone(),
+                },
+            }],
+        )
+        .await?;
+    }
+
     let channel: Option<Channel> = database
         .create(("channel", channel.channel_id.as_str()))
         .content(channel)
@@ -54,8 +74,28 @@ pub async fn build_channel_id(database: &Database) -> Result<String, Error> {
 }
 
 pub async fn send(database: &Database, message: Message) -> Result<Message, Error> {
-    if !channel_exists(database, &message.channel_id).await? {
-        return Err(Error::new(ErrorCode::NotFound, "Channel not found"));
+    let channel = get_channel(database, &message.channel_id)
+        .await?
+        .ok_or(Error::new(ErrorCode::NotFound, "Channel not found"))?;
+
+    for member in channel.members.keys() {
+        if member == &message.user_id {
+            continue;
+        }
+
+        user::push_notifications(
+            database,
+            member,
+            [Notification {
+                timestamp: utils::get_timestamp(),
+                ty: NotificationType::Message {
+                    channel_id: channel.channel_id.clone(),
+                    sender_id: message.user_id.clone(),
+                    content: message.content.clone(),
+                },
+            }],
+        )
+        .await?;
     }
 
     let message: Option<Message> = database

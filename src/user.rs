@@ -5,7 +5,7 @@ use crate::utils::VecStream;
 use crate::{auth, config, resource, utils};
 use aura_rust::common::v1::ErrorCode;
 use aura_rust::user::v1::{UserProfile, UserRole};
-use aura_rust::{ResourceMeta, User};
+use aura_rust::{Notification, ResourceMeta, User};
 use surrealdb::types::{Object, RecordId};
 use tonic::codegen::tokio_stream::StreamExt;
 
@@ -154,6 +154,22 @@ pub async fn is_blocked_by(
     Ok(!result.is_empty())
 }
 
+pub async fn push_notifications(
+    database: &Database,
+    user_id: &str,
+    notifications: impl IntoIterator<Item = Notification>,
+) -> Result<(), Error> {
+    let mut user = get(database, user_id)
+        .await?
+        .ok_or(Error::new(ErrorCode::NotFound, "User not found"))?;
+
+    user.notifications.extend(notifications);
+
+    update(database, user).await?;
+
+    Ok(())
+}
+
 pub async fn exists(database: &Database, userid: &str) -> Result<bool, Error> {
     Ok(get(database, userid).await?.is_some())
 }
@@ -190,6 +206,7 @@ pub async fn create_admin(database: &Database) -> Result<(), Error> {
                 password: auth::hash("admin".to_string()).expect("Failed to hash password"),
                 role: UserRole::Admin as i32,
                 icon: resource::build_user_avatar_id("admin"),
+                notifications: Vec::new(),
             },
         )
         .await?;

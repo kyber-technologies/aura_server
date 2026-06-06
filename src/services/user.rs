@@ -82,6 +82,7 @@ impl Service {
             password: request.password,
             role: UserRole::UserUnspecified as i32,
             icon: DEFAULT_USER_ICON.clone(),
+            notifications: Vec::new(),
         };
 
         user.password = auth::hash(user.password).map_err(|err| {

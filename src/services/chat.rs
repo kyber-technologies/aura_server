@@ -26,7 +26,7 @@ impl Service {
     ) -> Result<CreateChannelResponse, Error> {
         let database = self.state.database();
 
-        auth::verify(database, &request).await?;
+        let user = auth::verify(database, &request).await?;
         let channel_args = request.into_inner();
         let channel_id = chat::build_channel_id(database).await?;
 
@@ -38,6 +38,7 @@ impl Service {
                 description: channel_args.description,
                 members: channel_args.members,
             },
+            user.user_id,
         )
         .await?;
 
