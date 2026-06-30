@@ -6,10 +6,10 @@ use aura_rust::user::v1::user_service_server::UserService;
 use aura_rust::user::v1::{
     AuthUserRequest, AuthUserResponse, BlockUserRequest, BlockUserResponse, CreateUserRequest,
     CreateUserResponse, DeleteUserRequest, DeleteUserResponse, GetUserRequest, GetUserResponse,
-    IsBlockedRequest, IsBlockedResponse, SearchUsersRequest, SearchUsersResponse,
-    UpdateUserRequest, UpdateUserResponse, UserExistsRequest, UserExistsResponse, UserRole,
-    VerifyEmailRequest, VerifyEmailResponse, auth_user_response, get_user_response,
-    is_blocked_response,
+    IsBlockedRequest, IsBlockedResponse, NotificationsRequest, NotificationsResponse,
+    SearchUsersRequest, SearchUsersResponse, UpdateUserRequest, UpdateUserResponse,
+    UserExistsRequest, UserExistsResponse, UserRole, VerifyEmailRequest, VerifyEmailResponse,
+    auth_user_response, get_user_response, is_blocked_response,
 };
 use aura_rust::{DEFAULT_USER_ICON, User};
 use tonic::{Request, Response, Status};
@@ -196,6 +196,18 @@ impl Service {
             result: Some(is_blocked_response::Result::Blocked(is_blocked)),
         })
     }
+
+    async fn _notifications(
+        &self,
+        request: Request<NotificationsRequest>,
+    ) -> Result<NotificationsResponse, Error> {
+        let user = auth::verify(self.state.database(), &request).await?;
+
+        Ok(NotificationsResponse {
+            notifications: user.notifications.into_iter().map(|n| n.into()).collect(),
+            error: None,
+        })
+    }
 }
 
 #[tonic::async_trait]
@@ -336,6 +348,21 @@ impl UserService for Service {
             .await
             .unwrap_or_else(|err| IsBlockedResponse {
                 result: Some(is_blocked_response::Result::Error(err.into())),
+            });
+
+        Ok(Response::new(resp))
+    }
+
+    async fn notifications(
+        &self,
+        request: Request<NotificationsRequest>,
+    ) -> Result<Response<NotificationsResponse>, Status> {
+        let resp = self
+            ._notifications(request)
+            .await
+            .unwrap_or_else(|err| NotificationsResponse {
+                notifications: Vec::new(),
+                error: Some(err.into()),
             });
 
         Ok(Response::new(resp))

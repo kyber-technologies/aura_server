@@ -163,7 +163,15 @@ pub async fn push_notifications(
         .await?
         .ok_or(Error::new(ErrorCode::NotFound, "User not found"))?;
 
+    let config = config::get();
+    let now = utils::get_timestamp();
+
     user.notifications.extend(notifications);
+
+    user.notifications.retain(|n| {
+        now.millis - n.timestamp.millis
+            < config.service_notification_expiration_time * 60 * 60 * 1000
+    });
 
     update(database, user).await?;
 

@@ -47,6 +47,7 @@ pub struct Config {
     pub service_private_key: String,
     pub service_token_expiration: u64,
     pub service_max_search_results: usize,
+    pub service_notification_expiration_time: u64,
     pub service_resource_dir: String,
     pub net_address: String,
     pub net_rate_limit_replenish: u64,
@@ -98,15 +99,20 @@ impl Config {
             .expect("Failed parsing 'service.max_search_results' field")
             as usize;
 
-        let service_resource_dir = service
-            .get_string("resource_dir")
-            .expect("Failed parsing 'service.resource_dir' field")
-            .to_string();
-
         let service_token_expiration = service
             .get_integer("token_expiration")
             .expect("Failed parsing 'service.token_expiration' field")
             as u64;
+
+        let service_notification_expiration_time = service
+            .get_integer("notification_expiration_time")
+            .expect("Failed parsing 'service.notification_expiration_time' field")
+            as u64;
+
+        let service_resource_dir = service
+            .get_string("resource_dir")
+            .expect("Failed parsing 'service.resource_dir' field")
+            .to_string();
 
         let network = toml
             .get_table("network")
@@ -242,8 +248,9 @@ impl Config {
             service_public_key,
             service_private_key,
             service_max_search_results,
-            service_resource_dir,
             service_token_expiration,
+            service_notification_expiration_time,
+            service_resource_dir,
             net_address,
             net_rate_limit_replenish,
             net_rate_limit_burst,
@@ -282,8 +289,9 @@ impl Config {
             service_public_key,
             service_private_key,
             service_max_search_results,
-            service_resource_dir,
             service_token_expiration,
+            service_notification_expiration_time,
+            service_resource_dir,
             net_address,
             net_rate_limit_replenish,
             net_rate_limit_burst,
@@ -319,10 +327,12 @@ public_key = "{service_public_key}"
 private_key = "{service_private_key}"
 # Maximum number of search results returned search requests.
 max_search_results = {service_max_search_results}
-# Directory where uploaded resources are stored.
-resource_dir = "{service_resource_dir}"
 # Token expiration time in hours.
 token_expiration = {service_token_expiration}
+# Notification expiration time in hours.
+notification_expiration_time = {service_notification_expiration_time}
+# Directory where uploaded resources are stored.
+resource_dir = "{service_resource_dir}"
 
 [network]
 # Address of the gRPC service.
@@ -345,7 +355,7 @@ event_interval = {rt_event_interval}
 worker_threads = {rt_worker_threads}
 # Maximum threads to spawn for blocking operations.
 max_blocking_threads = {rt_max_blocking_threads}
-# Maintainance interval in seconds.
+# Maintenance interval in seconds.
 maintain_interval = {rt_maintain_interval}
 
 [database]
@@ -400,13 +410,14 @@ impl Default for Config {
             }
             .to_string(),
             service_max_search_results: 50,
+            service_token_expiration: 168,
+            service_notification_expiration_time: 144,
             service_resource_dir: if cfg!(debug_assertions) {
                 "./dev/resources"
             } else {
                 "./resources"
             }
             .to_string(),
-            service_token_expiration: 168,
             net_address: "127.0.0.1:50051".to_string(),
             net_rate_limit_replenish: 100,
             net_rate_limit_burst: 30,
