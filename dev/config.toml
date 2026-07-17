@@ -1,0 +1,72 @@
+# Elysium Configuration File
+
+[service]
+# Path to the public EdDSA key used for JWT authentication.
+public_key = "./dev/public-key.pem"
+# Path to the private EdDSA key used for JWT authentication.
+private_key = "./dev/private-key.pem"
+# Maximum number of search results returned search requests.
+max_search_results = 50
+# Token expiration time in hours.
+token_expiration = 168
+# Notification expiration time in hours.
+notification_expiration_time = 144
+# Directory where uploaded resources are stored.
+resource_dir = "./dev/resources"
+
+[network]
+# Address of the gRPC service.
+address = "127.0.0.1:50051"
+# Rate limit token replenish rate in milliseconds.
+rate_limit_replenish = 100
+# Rate limit token burst size.
+rate_limit_burst = 30
+
+[runtime]
+# Maximum I/O events processed per tick.
+max_io_events_per_tick = 1024
+# Thread keep alive time in seconds.
+thread_keep_alive = 10
+# Global queue interval.
+global_queue_interval = 31
+# Event interval.
+event_interval = 61
+# Worker threads to use.
+worker_threads = 4
+# Maximum threads to spawn for blocking operations.
+max_blocking_threads = 256
+# Maintenance interval in seconds.
+maintain_interval = 600
+
+[database]
+# Address to the SurrealDB database server.
+address = "127.0.0.1:8000"
+# The user to log into SurrealDB with.
+user = "root"
+# Path to the file containing the password for the SurrealDB user.
+password = "./dev/database-password"
+
+[email]
+# SMTP server address.
+smtp = "127.0.0.1:1025"
+# SMTP server username.
+smtp_user = "user"
+# Path to the file containing the password for the SMTP user.
+smtp_password = "./dev/smtp-password"
+# Email expiration time in seconds.
+expiration = 3600
+# Email to send from.
+no_reply_mail = "no-reply@aura.social"
+
+[logging]
+# Should log records contain file names.
+file_names = false
+# Should log records containg target names.
+targets = false
+# The most-verbose level of logging to start logging at.
+level = "info"
+# Should log records contain thread IDs and names.
+threads = false
+# Should log records contain timestamps.
+time = false
+        

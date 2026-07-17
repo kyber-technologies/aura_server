@@ -6,6 +6,7 @@ rustflags = ["--cfg", "tokio_unstable"]
 RUST_TEST_THREADS = "1"
 
 [profile.dev]
+incremental = true
 debug = 1
 codegen-units = 16
 rustflags = ["--cfg", "tokio_unstable", "-Zshare-generics=y"]
