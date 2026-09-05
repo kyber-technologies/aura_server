@@ -215,6 +215,7 @@ pub async fn create_admin(database: &Database) -> Result<(), Error> {
                 role: UserRole::Admin as i32,
                 icon: resource::build_user_avatar_id("admin"),
                 notifications: Vec::new(),
+                channels: Vec::new(),
             },
         )
         .await?;

@@ -116,6 +116,7 @@ REMOVE TABLE blocked;
             role: aura_rust::user::v1::UserRole::UserUnspecified as i32,
             icon: crate::resource::build_user_avatar_id(TEST_NEW_USER_NAME),
             notifications: Vec::new(),
+            channels: Vec::new(),
         },
     )
     .await
@@ -133,6 +134,7 @@ REMOVE TABLE blocked;
             role: aura_rust::user::v1::UserRole::Moderator as i32,
             icon: crate::resource::build_user_avatar_id(TEST_SUPERVISOR_NAME),
             notifications: Vec::new(),
+            channels: Vec::new(),
         },
     )
     .await
@@ -150,6 +152,7 @@ REMOVE TABLE blocked;
             role: aura_rust::user::v1::UserRole::Admin as i32,
             icon: crate::resource::build_user_avatar_id(TEST_ADMIN_NAME),
             notifications: Vec::new(),
+            channels: Vec::new(),
         },
     )
     .await

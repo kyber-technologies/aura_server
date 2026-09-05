@@ -13,18 +13,21 @@ pub async fn create_channel(
     owner: String,
 ) -> Result<Channel, Error> {
     for user_id in channel.members.keys() {
-        user::push_notifications(
-            database,
-            user_id,
-            [Notification {
-                timestamp: utils::get_timestamp(),
-                ty: NotificationType::Invite {
-                    channel_id: channel.channel_id.clone(),
-                    invited_by: owner.clone(),
-                },
-            }],
-        )
-        .await?;
+        let mut user = user::get(database, user_id)
+            .await?
+            .ok_or(Error::new(ErrorCode::NotFound, "User not found"))?;
+
+        user.notifications.push(Notification {
+            timestamp: utils::get_timestamp(),
+            ty: NotificationType::Invite {
+                channel_id: channel.channel_id.clone(),
+                invited_by: owner.clone(),
+            },
+        });
+
+        user.channels.push(channel.clone());
+
+        user::update(database, user).await?;
     }
 
     let channel: Option<Channel> = database

@@ -83,6 +83,7 @@ impl Service {
             role: UserRole::UserUnspecified as i32,
             icon: DEFAULT_USER_ICON.clone(),
             notifications: Vec::new(),
+            channels: Vec::new(),
         };
 
         user.password = auth::hash(user.password).map_err(|err| {
@@ -201,10 +202,18 @@ impl Service {
         &self,
         request: Request<NotificationsRequest>,
     ) -> Result<NotificationsResponse, Error> {
-        let user = auth::verify(self.state.database(), &request).await?;
+        let mut user = auth::verify(self.state.database(), &request).await?;
+
+        let notifications = user
+            .notifications
+            .drain(..)
+            .map(|n| n.into())
+            .collect::<Vec<_>>();
+
+        user::update(self.state.database(), user).await?;
 
         Ok(NotificationsResponse {
-            notifications: user.notifications.into_iter().map(|n| n.into()).collect(),
+            notifications,
             error: None,
         })
     }
