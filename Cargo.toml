@@ -6,26 +6,26 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tokio = { version = "1.50.0", features = ["rt-multi-thread", "fs", "time", "signal", "parking_lot"] }
-tokio-util = { version = "0.7.18", features = ["io"] }
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "fs", "time", "signal", "parking_lot"] }
+tokio-util = { version = "0.7.19", features = ["io"] }
 
 tracing = { version = "0.1.44", features = ["max_level_info"] }
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["std", "ansi", "fmt"] }
 
-tonic = { version = "0.14.5", default-features = false, features = ["server", "router", "gzip"] }
-tonic-reflection = "0.14.5"
+tonic = { version = "0.14.6", default-features = false, features = ["server", "router", "gzip"] }
+tonic-reflection = "0.14.6"
 tower_governor = { version = "0.8.0", default-features = false, features = ["tonic"] }
 
-surrealdb = "3.0.4"
+surrealdb = "3.2.4"
 
-jsonwebtoken = "10.3.0"
-argon2 = "0.6.0-rc.8"
+jsonwebtoken = "11.0.0"
+argon2 = "0.6.0"
 nanoid = "0.5.0"
 
 boml = "2.0.0"
 dashmap = "7.0.0-rc2"
-lettre = "0.11.21"
-fastrand = "2.4.1"
+lettre = "0.11.23"
+fastrand = "2.5.0"
 
 aura_rust = { git = "https://github.com/kyber-technologies/aura_proto.git" }
 
