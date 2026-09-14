@@ -61,7 +61,7 @@ impl GrpcDomainType for User {
             user_id: self.user_id,
             username: self.username,
             email: self.email,
-            password: self.password,
+            password: String::new(),
             role: UserRole::into_grpc(self.role)?.into(),
             created_at: Some(self.created_at.into_grpc()?),
             icon: Some(self.icon.into_grpc()?),
