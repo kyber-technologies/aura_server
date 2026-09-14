@@ -1,10 +1,12 @@
-use crate::database::Database;
+use crate::config;
+use crate::database::DatabaseConnection;
 use crate::error::Error;
-use crate::{config, user};
+use crate::logic::user;
+use crate::types::common::Auth;
+use crate::types::user::User;
 use argon2::password_hash::phc::Salt;
 use argon2::{Argon2, Params, PasswordHasher, PasswordVerifier, Version};
 use aura_rust::common::v1::ErrorCode;
-use aura_rust::{Auth, User};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use std::sync::OnceLock;
 use std::time::SystemTime;
@@ -27,11 +29,11 @@ pub async fn init() {
         ))
         .expect("Failed to initialize Argon2");
 
-    let private = tokio::fs::read(config.service_private_key.as_str())
+    let private = tokio::fs::read(config.service.private_key.as_str())
         .await
         .expect("Failed to read private EdDSA key");
 
-    let public = tokio::fs::read(config.service_public_key.as_str())
+    let public = tokio::fs::read(config.service.public_key.as_str())
         .await
         .expect("Failed to read public EdDSA key");
 
@@ -42,7 +44,7 @@ pub async fn init() {
     .expect("Failed to initialize argon2 keys");
 }
 
-pub async fn verify<T>(database: &Database, req: &Request<T>) -> Result<User, Error> {
+pub async fn verify<T>(database: &mut DatabaseConnection, req: &Request<T>) -> Result<User, Error> {
     let meta = req.metadata();
 
     let (_, key) = keys();
@@ -67,7 +69,11 @@ pub async fn verify<T>(database: &Database, req: &Request<T>) -> Result<User, Er
     }
 }
 
-pub async fn auth(database: &Database, user_id: String, password: String) -> Result<String, Error> {
+pub async fn auth(
+    database: &mut DatabaseConnection,
+    user_id: String,
+    password: String,
+) -> Result<(String, User), Error> {
     let user = user::get(database, &user_id).await?;
     let auth = Auth {
         user_id,
@@ -75,14 +81,15 @@ pub async fn auth(database: &Database, user_id: String, password: String) -> Res
             .elapsed()
             .expect("Failed to get current time")
             .as_secs()
-            + (config::get().service_token_expiration * 3600),
+            + (config::get().service.token_expiration * 3600),
     };
 
     let (key, _) = keys();
 
     if let Some(user) = user {
-        if verify_hash(password, user.password) {
+        if verify_hash(password, user.password.clone()) {
             jsonwebtoken::encode(&Header::new(Algorithm::EdDSA), &auth, key)
+                .map(|token| (token, user))
                 .map_err(|_| Error::new(ErrorCode::Internal, "Failed to encode token"))
         } else {
             Err(Error::new(ErrorCode::Unauthorized, "Invalid credentials"))

@@ -1,12 +1,18 @@
-use crate::database::Database;
+use crate::database::DatabaseConnection;
+use crate::database::resource as db;
 use crate::error::Error;
+use crate::logic::{chat, user};
+use crate::schema::resources;
+use crate::types::DatabaseDomainType;
+use crate::types::chat::ChannelPermission;
+use crate::types::resource::{ResourceDescriptor, ResourceId};
 use crate::utils::RESOURCE_CHUNK_SIZE;
-use crate::{chat, config, user, utils};
-use aura_rust::chat::v1::ChannelPermission;
+use crate::{config, utils};
 use aura_rust::common::v1::ErrorCode;
-use aura_rust::{ResourceId, ResourceMeta};
+use diesel::{ExpressionMethods, SelectableHelper};
+use diesel::{OptionalExtension, QueryDsl};
+use diesel_async::RunQueryDsl;
 use std::path::{Path, PathBuf};
-use surrealdb::types::SurrealValue;
 use tokio::fs;
 use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio_util::io::ReaderStream;
@@ -19,7 +25,7 @@ pub const BUILTIN_NAMESPACE: &str = "aura";
 pub const DEFAULT_ICON_KEY: &str = "default_icon.png";
 
 pub async fn create(
-    database: &Database,
+    database: &mut DatabaseConnection,
     desc: ResourceDescriptor,
 ) -> Result<ResourceDescriptor, Error> {
     if exists(database, &desc.resource_id).await? {
@@ -38,32 +44,47 @@ pub async fn create(
         ));
     }
 
-    let desc: Option<ResourceDescriptor> = database
-        .insert(("resource", construct_id(&desc.resource_id)))
-        .content(desc)
+    let data = desc.clone().into_db()?;
+
+    diesel::insert_into(resources::table)
+        .values(&data)
+        .execute(database)
         .await?;
 
-    Ok(desc.ok_or(Error::new(ErrorCode::Internal, "Failed to create resource"))?)
+    Ok(desc)
 }
 
 pub async fn get(
-    database: &Database,
+    database: &mut DatabaseConnection,
     resource_id: &ResourceId,
 ) -> Result<Option<ResourceDescriptor>, Error> {
-    let resource: Option<ResourceDescriptor> = database
-        .select(("resource", construct_id(resource_id)))
-        .await?;
+    let resource = resources::table
+        .filter(resources::namespace.eq(&resource_id.namespace))
+        .filter(resources::key.eq(&resource_id.key))
+        .select(db::ResourceDescriptor::as_select())
+        .first::<db::ResourceDescriptor>(database)
+        .await
+        .optional()?;
 
-    Ok(resource)
+    resource.map(ResourceDescriptor::from_db).transpose()
 }
 
-pub async fn exists(database: &Database, resource_id: &ResourceId) -> Result<bool, Error> {
-    let resource = get(database, resource_id).await?;
-    Ok(resource.is_some())
+pub async fn exists(
+    database: &mut DatabaseConnection,
+    resource_id: &ResourceId,
+) -> Result<bool, Error> {
+    Ok(resources::table
+        .filter(resources::namespace.eq(&resource_id.namespace))
+        .filter(resources::key.eq(&resource_id.key))
+        .select(resources::namespace)
+        .first::<String>(database)
+        .await
+        .optional()?
+        .is_some())
 }
 
 pub async fn is_download_authorized(
-    database: &Database,
+    database: &mut DatabaseConnection,
     desc: &ResourceDescriptor,
     user: &str,
 ) -> Result<bool, Error> {
@@ -86,7 +107,7 @@ pub async fn is_download_authorized(
 }
 
 pub async fn is_upload_authorized(
-    database: &Database,
+    database: &mut DatabaseConnection,
     desc: &ResourceDescriptor,
     user: &str,
 ) -> Result<bool, Error> {
@@ -117,10 +138,10 @@ pub async fn read(id: ResourceId) -> Result<impl Stream<Item = Result<Vec<u8>, E
         .write(false)
         .create(false)
         .append(false)
-        .open(path)
+        .open(&path)
         .await
         .map_err(|e| {
-            tracing::error!("Failed opening read file: {e}");
+            tracing::error!("Failed opening read file '{path:?}': {e}");
             Error::new(ErrorCode::Internal, "Failed to read resource")
         })?;
 
@@ -195,19 +216,8 @@ pub fn build_user_avatar_id(user: &str) -> ResourceId {
     }
 }
 
-fn construct_id(id: &ResourceId) -> String {
-    format!("{}:{}", id.namespace, id.key)
-}
-
 fn build_path(id: &ResourceId) -> PathBuf {
-    Path::new(&config::get().service_resource_dir)
+    Path::new(&config::get().service.resource_dir)
         .join(&id.namespace)
         .join(&id.key)
-}
-
-#[derive(Clone, Debug, SurrealValue)]
-pub struct ResourceDescriptor {
-    pub resource_id: ResourceId,
-    pub meta: ResourceMeta,
-    pub user_id: String,
 }

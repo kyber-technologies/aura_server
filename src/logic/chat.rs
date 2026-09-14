@@ -1,0 +1,250 @@
+use crate::database::DatabaseConnection;
+use crate::database::channel as ch_db;
+use crate::database::message as msg_db;
+use crate::error::Error;
+use crate::logic::user::push_notifications;
+use crate::schema::{channel_members, channels, messages};
+use crate::types::DatabaseDomainType;
+use crate::types::chat::{Channel, ChannelPermission, Message};
+use crate::types::common::Timestamp;
+use crate::types::user::Notification;
+use aura_rust::common::v1::ErrorCode;
+use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, SelectableHelper};
+use diesel_async::{AsyncConnection, RunQueryDsl};
+use nanoid::nanoid;
+
+pub const ID_LENGTH: usize = 10;
+
+pub async fn create_channel(
+    database: &mut DatabaseConnection,
+    channel: Channel,
+    owner: String,
+) -> Result<Channel, Error> {
+    database
+        .transaction(async |database| {
+            let channel_data = ch_db::Channel {
+                channel_id: channel.channel_id.clone(),
+                name: channel.name.clone(),
+                description: channel.description.clone(),
+            };
+
+            diesel::insert_into(channels::table)
+                .values(&channel_data)
+                .execute(database)
+                .await?;
+
+            let members = channel
+                .members
+                .iter()
+                .map(|(user_id, permission)| ch_db::ChannelMember {
+                    channel_id: channel.channel_id.clone(),
+                    user_id: user_id.clone(),
+                    permission: permission.clone(),
+                })
+                .collect::<Vec<_>>();
+
+            if !members.is_empty() {
+                diesel::insert_into(channel_members::table)
+                    .values(&members)
+                    .execute(database)
+                    .await?;
+            }
+
+            for user_id in channel.members.keys() {
+                push_notifications(
+                    database,
+                    user_id,
+                    [Notification::Invite {
+                        // TODO: reinforce so that the notification_id is unique
+                        notification_id: nanoid!(ID_LENGTH),
+                        timestamp: Timestamp::now(),
+                        channel_id: channel.channel_id.clone(),
+                        invited_by: owner.clone(),
+                    }],
+                )
+                .await?;
+            }
+
+            Ok::<Channel, Error>(channel)
+        })
+        .await
+}
+
+pub async fn get_channel(
+    database: &mut DatabaseConnection,
+    channel_id: &str,
+) -> Result<Option<Channel>, Error> {
+    let channel = channels::table
+        .find(channel_id)
+        .select(ch_db::Channel::as_select())
+        .first(database)
+        .await
+        .optional()?;
+
+    let Some(channel) = channel else {
+        return Ok(None);
+    };
+
+    let members = channel_members::table
+        .filter(channel_members::channel_id.eq(channel_id))
+        .select(ch_db::ChannelMember::as_select())
+        .load(database)
+        .await?;
+
+    let data = ch_db::ChannelData { channel, members };
+
+    Ok(Some(Channel::from_db(data)?))
+}
+
+pub async fn get_channel_member_perm(
+    database: &mut DatabaseConnection,
+    channel_id: &str,
+    user_id: &str,
+) -> Result<ChannelPermission, Error> {
+    channel_members::table
+        .filter(channel_members::channel_id.eq(channel_id))
+        .filter(channel_members::user_id.eq(user_id))
+        .select(channel_members::permission)
+        .first::<ChannelPermission>(database)
+        .await
+        .optional()?
+        .ok_or(Error::new(ErrorCode::NotFound, "User not in channel"))
+}
+
+pub async fn channel_exists(
+    database: &mut DatabaseConnection,
+    channel_id: &str,
+) -> Result<bool, Error> {
+    Ok(channels::table
+        .find(channel_id)
+        .select(channels::channel_id)
+        .first::<String>(database)
+        .await
+        .optional()?
+        .is_some())
+}
+
+pub async fn build_channel_id(database: &mut DatabaseConnection) -> Result<String, Error> {
+    let mut id = nanoid::nanoid!(ID_LENGTH);
+
+    while channel_exists(database, &id).await? {
+        id = nanoid::nanoid!(ID_LENGTH);
+    }
+
+    Ok(id)
+}
+
+pub async fn send(database: &mut DatabaseConnection, message: Message) -> Result<Message, Error> {
+    database
+        .transaction(async |database| {
+            let channel = get_channel(database, &message.channel_id)
+                .await?
+                .ok_or(Error::new(ErrorCode::NotFound, "Channel not found"))?;
+
+            let message_data = message.clone().into_db()?;
+
+            diesel::insert_into(messages::table)
+                .values(&message_data)
+                .execute(database)
+                .await
+                .map_err(|err| match err {
+                    diesel::result::Error::DatabaseError(
+                        diesel::result::DatabaseErrorKind::UniqueViolation,
+                        _,
+                    ) => Error::new(ErrorCode::AlreadyExists, "Message already exists"),
+                    err => err.into(),
+                })?;
+
+            for member in channel.members.keys() {
+                if member == &message.user_id {
+                    continue;
+                }
+
+                push_notifications(
+                    database,
+                    member,
+                    [Notification::Message {
+                        notification_id: nanoid::nanoid!(),
+                        timestamp: Timestamp::now(),
+                        channel_id: channel.channel_id.clone(),
+                        sender_id: message.user_id.clone(),
+                        message: message.clone(),
+                    }],
+                )
+                .await?;
+            }
+
+            Ok::<Message, Error>(message)
+        })
+        .await
+}
+
+pub async fn read_messages(
+    database: &mut DatabaseConnection,
+    channel_id: &str,
+    limit: u32,
+    start_at: Timestamp,
+) -> Result<Vec<Message>, Error> {
+    let rows = messages::table
+        .filter(messages::channel_id.eq(channel_id))
+        .filter(messages::created_at.lt(start_at.0))
+        .order(messages::created_at.desc())
+        .limit(limit as i64)
+        .select(msg_db::Message::as_select())
+        .load::<msg_db::Message>(database)
+        .await?;
+
+    rows.into_iter().map(Message::from_db).collect()
+}
+
+pub async fn delete_message(
+    database: &mut DatabaseConnection,
+    message_id: &str,
+) -> Result<(), Error> {
+    let deleted = diesel::delete(messages::table.find(message_id))
+        .execute(database)
+        .await?;
+
+    if deleted == 0 {
+        return Err(Error::new(ErrorCode::NotFound, "Message not found"));
+    }
+
+    Ok(())
+}
+
+pub async fn get_msg(
+    database: &mut DatabaseConnection,
+    message_id: &str,
+) -> Result<Option<Message>, Error> {
+    let message = messages::table
+        .find(message_id)
+        .select(msg_db::Message::as_select())
+        .first::<msg_db::Message>(database)
+        .await
+        .optional()?;
+
+    message.map(Message::from_db).transpose()
+}
+
+pub async fn msg_exists(
+    database: &mut DatabaseConnection,
+    message_id: &str,
+) -> Result<bool, Error> {
+    Ok(messages::table
+        .find(message_id)
+        .select(messages::message_id)
+        .first::<String>(database)
+        .await
+        .optional()?
+        .is_some())
+}
+
+pub async fn build_message_id(database: &mut DatabaseConnection) -> Result<String, Error> {
+    let mut id = nanoid::nanoid!(ID_LENGTH);
+
+    while msg_exists(database, &id).await? {
+        id = nanoid::nanoid!(ID_LENGTH);
+    }
+
+    Ok(id)
+}

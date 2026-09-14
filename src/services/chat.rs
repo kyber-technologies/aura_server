@@ -1,14 +1,17 @@
+use crate::auth;
 use crate::error::Error;
+use crate::logic::chat;
 use crate::state::ServerState;
-use crate::{auth, chat, utils};
+use crate::types::chat::{Channel, ChannelPermission, Content, Message};
+use crate::types::common::Timestamp;
+use crate::types::{FastMap, GrpcDomainType};
 use aura_rust::chat::v1::chat_service_server::ChatService;
 use aura_rust::chat::v1::{
-    ChannelPermission, CreateChannelRequest, CreateChannelResponse, DeleteMessageRequest,
-    DeleteMessageResponse, ReadMessagesRequest, ReadMessagesResponse, SendMessageRequest,
-    SendMessageResponse, create_channel_response, send_message_response,
+    CreateChannelRequest, CreateChannelResponse, DeleteMessageRequest, DeleteMessageResponse,
+    ReadMessagesRequest, ReadMessagesResponse, SendMessageRequest, SendMessageResponse,
+    create_channel_response, send_message_response,
 };
 use aura_rust::common::v1::ErrorCode;
-use aura_rust::{Channel, Message, Timestamp};
 use tonic::{Request, Response, Status};
 
 pub struct Service {
@@ -24,26 +27,40 @@ impl Service {
         &self,
         request: Request<CreateChannelRequest>,
     ) -> Result<CreateChannelResponse, Error> {
-        let database = self.state.database();
+        let mut database = self.state.database().await?;
 
-        let user = auth::verify(database, &request).await?;
+        let user = auth::verify(&mut database, &request).await?;
         let channel_args = request.into_inner();
-        let channel_id = chat::build_channel_id(database).await?;
+        let channel_id = chat::build_channel_id(&mut database).await?;
 
         let channel = chat::create_channel(
-            database,
+            &mut database,
             Channel {
                 channel_id,
                 name: channel_args.name,
                 description: channel_args.description,
-                members: channel_args.members,
+                members: channel_args
+                    .members
+                    .into_iter()
+                    .map(|(user, perm)| {
+                        Ok((
+                            user,
+                            ChannelPermission::from_grpc(
+                                aura_rust::chat::v1::ChannelPermission::try_from(perm)
+                                    .map_err(|_| Error::invalid_format())?,
+                            )?,
+                        ))
+                    })
+                    .collect::<Result<FastMap<_, _>, Error>>()?,
             },
             user.user_id,
         )
         .await?;
 
         Ok(CreateChannelResponse {
-            result: Some(create_channel_response::Result::Channel(channel.into())),
+            result: Some(create_channel_response::Result::Channel(
+                channel.into_grpc()?,
+            )),
         })
     }
 
@@ -51,13 +68,13 @@ impl Service {
         &self,
         request: Request<ReadMessagesRequest>,
     ) -> Result<ReadMessagesResponse, Error> {
-        let database = self.state.database();
+        let mut database = self.state.database().await?;
 
-        let user = auth::verify(database, &request).await?;
+        let user = auth::verify(&mut database, &request).await?;
 
         let msg_args = request.into_inner();
 
-        let channel = chat::get_channel(database, &msg_args.channel_id)
+        let channel = chat::get_channel(&mut database, &msg_args.channel_id)
             .await?
             .ok_or(Error::new(ErrorCode::NotFound, "Channel not found"))?;
 
@@ -66,16 +83,19 @@ impl Service {
         }
 
         let messages = chat::read_messages(
-            database,
-            msg_args.channel_id,
+            &mut database,
+            &msg_args.channel_id,
             msg_args.limit,
-            Timestamp::try_from(msg_args.start_time.ok_or(Error::invalid_argument())?)?,
+            Timestamp::from_grpc(msg_args.start_time.ok_or(Error::invalid_format())?)?,
         )
         .await?;
 
         Ok(ReadMessagesResponse {
             error: None,
-            messages: messages.into_iter().map(|m| m.into()).collect(),
+            messages: messages
+                .into_iter()
+                .map(|m| m.into_grpc())
+                .collect::<Result<_, Error>>()?,
         })
     }
 
@@ -83,33 +103,33 @@ impl Service {
         &self,
         request: Request<SendMessageRequest>,
     ) -> Result<SendMessageResponse, Error> {
-        let database = self.state.database();
+        let mut database = self.state.database().await?;
 
-        let user = auth::verify(database, &request).await?;
+        let user = auth::verify(&mut database, &request).await?;
         let msg_args = request.into_inner();
 
-        let mut content = msg_args.content.ok_or(Error::invalid_argument())?;
-
-        content.created_at = Some(utils::get_timestamp().into());
+        let content = msg_args.content.ok_or(Error::invalid_format())?;
 
         let perm =
-            chat::get_channel_member_perm(database, &msg_args.channel_id, &user.user_id).await?;
+            chat::get_channel_member_perm(&mut database, &msg_args.channel_id, &user.user_id)
+                .await?;
 
         if perm == ChannelPermission::ReadWrite || perm == ChannelPermission::Manager {
-            let id = chat::build_message_id(database).await?;
+            let id = chat::build_message_id(&mut database).await?;
             let msg = chat::send(
-                database,
+                &mut database,
                 Message {
                     message_id: id,
                     user_id: user.user_id,
                     channel_id: msg_args.channel_id,
-                    content: content.try_into()?,
+                    content: Content::from_grpc(content)?,
+                    created_at: Timestamp::now(),
                 },
             )
             .await?;
 
             Ok(SendMessageResponse {
-                result: Some(send_message_response::Result::Message(msg.into())),
+                result: Some(send_message_response::Result::Message(msg.into_grpc()?)),
             })
         } else {
             Err(Error::new(
@@ -123,20 +143,20 @@ impl Service {
         &self,
         request: Request<DeleteMessageRequest>,
     ) -> Result<DeleteMessageResponse, Error> {
-        let database = self.state.database();
+        let mut database = self.state.database().await?;
 
-        let user = auth::verify(database, &request).await?;
-        let message = chat::get_msg(database, &request.into_inner().message_id)
+        let user = auth::verify(&mut database, &request).await?;
+        let message = chat::get_msg(&mut database, &request.into_inner().message_id)
             .await?
             .ok_or(Error::new(ErrorCode::NotFound, "Message not found"))?;
 
-        let perm =
-            chat::get_channel_member_perm(database, &message.channel_id, &user.user_id).await?;
+        let perm = chat::get_channel_member_perm(&mut database, &message.channel_id, &user.user_id)
+            .await?;
 
         if perm == ChannelPermission::Manager
             || (perm == ChannelPermission::ReadWrite && message.user_id == user.user_id)
         {
-            chat::delete_message(database, &message.message_id).await?;
+            chat::delete_message(&mut database, &message.message_id).await?;
 
             Ok(DeleteMessageResponse { error: None })
         } else {

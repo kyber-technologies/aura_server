@@ -1,8 +1,11 @@
+use crate::auth;
 use crate::error::Error;
-use crate::resource::ResourceDescriptor;
+use crate::logic::resource;
 use crate::state::ServerState;
-use crate::utils::{SafeStreaming, VecStream};
-use crate::{auth, resource, utils};
+use crate::types::GrpcDomainType;
+use crate::types::common::Timestamp;
+use crate::types::resource::{ResourceDescriptor, ResourceId, ResourceMeta};
+use crate::utils::SafeStreaming;
 use aura_rust::common::v1::ErrorCode;
 use aura_rust::resource::v1::resource_service_server::ResourceService;
 use aura_rust::resource::v1::upload_request::Payload;
@@ -10,7 +13,6 @@ use aura_rust::resource::v1::{
     DownloadRequest, DownloadResponse, GetResourceMetaRequest, GetResourceMetaResponse,
     UploadRequest, UploadResponse, download_response, get_resource_meta_response,
 };
-use aura_rust::{ResourceId, ResourceMeta};
 use tonic::codegen::BoxStream;
 use tonic::codegen::tokio_stream::StreamExt;
 use tonic::{Request, Response, Status, Streaming};
@@ -28,25 +30,22 @@ impl Service {
         &self,
         request: Request<Streaming<UploadRequest>>,
     ) -> Result<UploadResponse, Error> {
-        let database = self.state.database();
-        let user = auth::verify(database, &request).await?;
+        let mut database = self.state.database().await?;
+        let user = auth::verify(&mut database, &request).await?;
         let mut stream = SafeStreaming::new(request.into_inner());
 
-        let meta_req = stream
-            .next_safe()
-            .await
-            .ok_or(Error::invalid_argument())??;
+        let meta_req = stream.next_safe().await.ok_or(Error::invalid_format())??;
 
         let resource_id =
-            ResourceId::try_from(meta_req.resource_id.ok_or(Error::invalid_argument())?)?;
+            ResourceId::from_grpc(meta_req.resource_id.ok_or(Error::invalid_format())?)?;
 
         let mut meta =
-            ResourceMeta::try_from(match meta_req.payload.ok_or(Error::invalid_argument())? {
+            ResourceMeta::from_grpc(match meta_req.payload.ok_or(Error::invalid_format())? {
                 Payload::Meta(meta) => Ok(meta),
-                Payload::Data(_) => Err(Error::invalid_argument()),
+                Payload::Data(_) => Err(Error::invalid_format()),
             }?)?;
 
-        meta.timestamp = utils::get_timestamp();
+        meta.timestamp = Timestamp::now();
 
         let desc = ResourceDescriptor {
             resource_id,
@@ -54,22 +53,22 @@ impl Service {
             user_id: user.user_id.clone(),
         };
 
-        if !resource::is_upload_authorized(database, &desc, &user.user_id).await? {
+        if !resource::is_upload_authorized(&mut database, &desc, &user.user_id).await? {
             return Err(Error::new(
                 ErrorCode::Unauthorized,
                 "User does not have write permissions",
             ));
         }
 
-        let desc = if let Some(desc) = resource::get(database, &desc.resource_id).await? {
+        let desc = if let Some(desc) = resource::get(&mut database, &desc.resource_id).await? {
             desc
         } else {
-            resource::create(database, desc).await?
+            resource::create(&mut database, desc).await?
         };
 
         let stream = stream.into_inner().map(|req| match req {
-            Ok(req) => match req.payload.ok_or(Error::invalid_argument())? {
-                Payload::Meta(_) => Err(Error::invalid_argument()),
+            Ok(req) => match req.payload.ok_or(Error::invalid_format())? {
+                Payload::Meta(_) => Err(Error::invalid_format()),
                 Payload::Data(data) => Ok(data),
             },
 
@@ -88,25 +87,25 @@ impl Service {
         &self,
         request: Request<DownloadRequest>,
     ) -> Result<BoxStream<DownloadResponse>, Error> {
-        let database = self.state.database();
+        let mut database = self.state.database().await?;
 
-        let user = auth::verify(database, &request).await?;
-        let resource_id = ResourceId::try_from(
+        let user = auth::verify(&mut database, &request).await?;
+        let resource_id = ResourceId::from_grpc(
             request
                 .into_inner()
                 .resource_id
-                .ok_or(Error::invalid_argument())?,
+                .ok_or(Error::invalid_format())?,
         )?;
-        let desc = resource::get(database, &resource_id)
+        let desc = resource::get(&mut database, &resource_id)
             .await?
             .ok_or(Error::new(ErrorCode::NotFound, "Resource not found"))?;
 
-        if !resource::is_download_authorized(database, &desc, &user.user_id).await? {
+        if !resource::is_download_authorized(&mut database, &desc, &user.user_id).await? {
             return Err(Error::new(ErrorCode::Unauthorized, "User not authorized"));
         }
 
-        let meta_stream = VecStream::once(Ok(DownloadResponse {
-            result: Some(download_response::Result::Meta(desc.meta.into())),
+        let meta_stream = tokio_stream::once(Ok(DownloadResponse {
+            result: Some(download_response::Result::Meta(desc.meta.into_grpc()?)),
         }));
 
         let stream = resource::read(resource_id).await?.map(|res| match res {
@@ -125,26 +124,28 @@ impl Service {
         &self,
         request: Request<GetResourceMetaRequest>,
     ) -> Result<GetResourceMetaResponse, Error> {
-        let database = self.state.database();
+        let mut database = self.state.database().await?;
 
-        let user = auth::verify(database, &request).await?;
-        let resource_id = ResourceId::try_from(
+        let user = auth::verify(&mut database, &request).await?;
+        let resource_id = ResourceId::from_grpc(
             request
                 .into_inner()
                 .resource_id
-                .ok_or(Error::invalid_argument())?,
+                .ok_or(Error::invalid_format())?,
         )?;
 
-        let desc = resource::get(database, &resource_id)
+        let desc = resource::get(&mut database, &resource_id)
             .await?
             .ok_or(Error::new(ErrorCode::NotFound, "Resource not found"))?;
 
-        if !resource::is_download_authorized(database, &desc, &user.user_id).await? {
+        if !resource::is_download_authorized(&mut database, &desc, &user.user_id).await? {
             return Err(Error::new(ErrorCode::Unauthorized, "User not authorized"));
         }
 
         Ok(GetResourceMetaResponse {
-            result: Some(get_resource_meta_response::Result::Meta(desc.meta.into())),
+            result: Some(get_resource_meta_response::Result::Meta(
+                desc.meta.into_grpc()?,
+            )),
         })
     }
 }
@@ -172,7 +173,7 @@ impl ResourceService for Service {
         request: Request<DownloadRequest>,
     ) -> Result<Response<Self::DownloadStream>, Status> {
         let resp = self._download(request).await.unwrap_or_else(|err| {
-            Box::pin(VecStream::once(Ok(DownloadResponse {
+            Box::pin(tokio_stream::once(Ok(DownloadResponse {
                 result: Some(download_response::Result::Error(err.into())),
             })))
         });

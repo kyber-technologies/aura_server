@@ -1,1 +1,1 @@
-surreal start -u root -p root surrealkv://database
+psql -h localhost -p 5432 -U postgres -d aura

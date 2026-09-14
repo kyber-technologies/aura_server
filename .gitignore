@@ -2,5 +2,6 @@
 /.idea
 /dev/database
 /dev/resources/*
+/dev/config.toml
 !/dev/resources/aura/
 !/dev/resources/aura/**

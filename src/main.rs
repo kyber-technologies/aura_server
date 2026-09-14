@@ -6,6 +6,7 @@ use aura_rust::chat::v1::chat_service_server::ChatServiceServer;
 use aura_rust::general::v1::general_service_server::GeneralServiceServer;
 use aura_rust::resource::v1::resource_service_server::ResourceServiceServer;
 use aura_rust::user::v1::user_service_server::UserServiceServer;
+use logic::user;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
@@ -14,27 +15,42 @@ use tonic::transport::Server;
 use tower_governor::GovernorLayer;
 use tower_governor::governor::GovernorConfigBuilder;
 use tower_governor::key_extractor::SmartIpKeyExtractor;
+use tracing::level_filters::LevelFilter;
 
 mod auth;
-mod chat;
 mod config;
 mod connect_info;
 mod database;
 mod email;
 mod error;
-mod resource;
+mod logic;
+mod schema;
 mod services;
 mod state;
-mod trace;
-mod user;
+mod types;
 mod utils;
 
 fn main() {
     println!("Loading configuration...");
     config::init();
+
     let config = config::get();
 
-    trace::init_logger();
+    let logger = tracing_subscriber::FmtSubscriber::builder()
+        .with_file(config.log.file_names)
+        .with_target(config.log.targets)
+        .with_thread_names(config.log.threads)
+        .with_thread_ids(config.log.threads)
+        .with_max_level(
+            LevelFilter::from_str(config.log.level.as_str()).expect("Invalid log level"),
+        );
+
+    if !config.log.time {
+        logger.without_time().init();
+    } else {
+        logger.init();
+    }
+
     tracing::info!("Logger initialized!");
 
     tracing::info!("########## CONFIGURATION ##########");
@@ -44,12 +60,12 @@ fn main() {
     tokio::runtime::Builder::new_multi_thread()
         .enable_alt_timer()
         .enable_io()
-        .max_io_events_per_tick(config.rt_max_io_events_per_tick)
-        .thread_keep_alive(Duration::from_secs(config.rt_thread_keep_alive))
-        .global_queue_interval(config.rt_global_queue_interval)
-        .event_interval(config.rt_event_interval)
-        .worker_threads(config.rt_worker_threads)
-        .max_blocking_threads(config.rt_max_blocking_threads)
+        .max_io_events_per_tick(config.runtime.max_io_events_per_tick)
+        .thread_keep_alive(Duration::from_secs(config.runtime.thread_keep_alive))
+        .global_queue_interval(config.runtime.global_queue_interval)
+        .event_interval(config.runtime.event_interval)
+        .worker_threads(config.runtime.worker_threads)
+        .max_blocking_threads(config.runtime.max_blocking_threads)
         .thread_name("aura-worker")
         .build()
         .expect("Failed to build tokio runtime")
@@ -58,19 +74,25 @@ fn main() {
             auth::init().await;
 
             tracing::info!("Initializing server state...");
-            let state = ServerState::new().await;
+            let state = ServerState::create().await;
+
+            #[cfg(feature = "testing")]
+            state.clear_state().await.expect("Failed to clear state");
 
             tokio::select! {
                 _ = serve(state.clone()) => (),
-                _ = exit_signal(state) => (),
+                _ = exit_signal(state.clone()) => (),
             }
+
+            state.dispose();
         });
 }
 
 async fn serve(state: ServerState) {
     let config = config::get();
 
-    let addr = SocketAddr::from_str(config.net_address.as_str()).expect("Failed to parse address");
+    let addr =
+        SocketAddr::from_str(config.network.address.as_str()).expect("Failed to parse address");
 
     tracing::info!("Launching maintenance loop...");
     let state2 = state.clone();
@@ -79,29 +101,29 @@ async fn serve(state: ServerState) {
     });
 
     // Create initial admin if not present
-    user::create_admin(state.database())
-        .await
-        .expect("Failed to create admin user");
+    user::create_admin(
+        &mut state
+            .database()
+            .await
+            .expect("Failed to get database connection"),
+    )
+    .await
+    .expect("Failed to create admin user");
 
-    tracing::info!("Creating reflection server...");
-    let reflection = tonic_reflection::server::Builder::configure()
-        .register_encoded_file_descriptor_set(aura_rust::FILE_DESCRIPTOR_SET)
-        .include_reflection_service(true)
-        .build_v1alpha()
-        .expect("Failed to build reflection server");
-
-    tracing::info!("Serving Elysium at '{}'...", config.net_address.as_str());
+    tracing::info!(
+        "Serving Elysium at '{}'...",
+        config.network.address.as_str()
+    );
     let builder = Server::builder()
         .layer(InterceptorLayer::new(ConnectInfoInterceptor))
         .layer(GovernorLayer::new(
             GovernorConfigBuilder::default()
                 .key_extractor(SmartIpKeyExtractor)
-                .per_millisecond(config.net_rate_limit_replenish)
-                .burst_size(config.net_rate_limit_burst)
+                .per_millisecond(config.network.rate_limit_replenish)
+                .burst_size(config.network.rate_limit_burst)
                 .finish()
                 .expect("Failed to build governor config"),
         ))
-        .add_service(reflection)
         .add_service(
             GeneralServiceServer::new(GeneralService::new(state.clone()))
                 .accept_compressed(COMPRESSION)

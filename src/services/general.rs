@@ -4,24 +4,9 @@ use crate::utils::RESOURCE_CHUNK_SIZE;
 use aura_rust::general::v1::general_service_server::GeneralService;
 use aura_rust::general::v1::{
     ClearStateRequest, ClearStateResponse, GetConfigRequest, GetConfigResponse,
-    GetEmailTokenRequest, GetEmailTokenResponse,
+    GetEmailTokenRequest, GetEmailTokenResponse, GetServicesRequest, GetServicesResponse,
 };
 use tonic::{Request, Response, Status};
-
-#[cfg(feature = "testing")]
-const TEST_NEW_USER_NAME: &str = "user";
-#[cfg(feature = "testing")]
-const TEST_NEW_USER_PASS: &str = "user";
-
-#[cfg(feature = "testing")]
-const TEST_SUPERVISOR_NAME: &str = "supervisor";
-#[cfg(feature = "testing")]
-const TEST_SUPERVISOR_PASS: &str = "supervisor";
-
-#[cfg(feature = "testing")]
-const TEST_ADMIN_NAME: &str = "admin";
-#[cfg(feature = "testing")]
-const TEST_ADMIN_PASS: &str = "admin";
 
 pub struct Service {
     #[allow(unused)]
@@ -52,7 +37,10 @@ impl GeneralService for Service {
     ) -> Result<Response<ClearStateResponse>, Status> {
         #[cfg(feature = "testing")]
         {
-            clear_state(&self.state).await;
+            self.state
+                .clear_state()
+                .await
+                .expect("Failed to clear state");
 
             Ok(Response::new(ClearStateResponse {}))
         }
@@ -80,81 +68,35 @@ impl GeneralService for Service {
         #[cfg(not(feature = "testing"))]
         Err(Status::failed_precondition("Server not in testing mode"))
     }
-}
 
-#[cfg(feature = "testing")]
-async fn clear_state(state: &ServerState) {
-    let database = state.database();
+    async fn get_services(
+        &self,
+        _request: Request<GetServicesRequest>,
+    ) -> Result<Response<GetServicesResponse>, Status> {
+        #[cfg(feature = "testing")]
+        {
+            use aura_rust::types::FileDescriptorSet;
+            use aura_rust::{FILE_DESCRIPTOR_SET, Message};
 
-    tracing::info!("Detected test environment. Clearing database...");
+            let services = FileDescriptorSet::decode(FILE_DESCRIPTOR_SET)
+                .map_err(|e| Status::internal(e.to_string()))?
+                .file
+                .into_iter()
+                .flat_map(|desc| desc.service)
+                .map(|serv| aura_rust::general::v1::ServiceDescriptor {
+                    name: serv.name.unwrap_or_else(|| "<unknown>".to_string()),
+                    methods: serv
+                        .method
+                        .into_iter()
+                        .map(|meth| meth.name.unwrap_or_else(|| "<unknown>".to_string()))
+                        .collect(),
+                })
+                .collect::<Vec<_>>();
 
-    database
-        .query(
-            r#"
-REMOVE TABLE user;
-REMOVE TABLE channel;
-REMOVE TABLE message;
-REMOVE TABLE resource;
-REMOVE TABLE blocked;
-"#,
-        )
-        .await
-        .expect("Failed to drop user table");
+            Ok(Response::new(GetServicesResponse { services }))
+        }
 
-    // Setup database again, since we just cleared all tables
-    database.setup().await;
-
-    tracing::info!("Creating test user with role user...");
-    crate::user::create(
-        database,
-        aura_rust::User {
-            user_id: TEST_NEW_USER_NAME.to_string(),
-            username: TEST_NEW_USER_NAME.to_string(),
-            email: "foo@bar.baz".to_string(),
-            password: crate::auth::hash(TEST_NEW_USER_PASS.to_string())
-                .expect("Failed to hash new user password"),
-            role: aura_rust::user::v1::UserRole::UserUnspecified as i32,
-            icon: crate::resource::build_user_avatar_id(TEST_NEW_USER_NAME),
-            notifications: Vec::new(),
-            channels: Vec::new(),
-        },
-    )
-    .await
-    .expect("Failed to create new test user");
-
-    tracing::info!("Creating test user with role supervisor...");
-    crate::user::create(
-        database,
-        aura_rust::User {
-            user_id: TEST_SUPERVISOR_NAME.to_string(),
-            username: TEST_SUPERVISOR_NAME.to_string(),
-            email: "foo@bar.baz".to_string(),
-            password: crate::auth::hash(TEST_SUPERVISOR_PASS.to_string())
-                .expect("Failed to hash supervisor password"),
-            role: aura_rust::user::v1::UserRole::Moderator as i32,
-            icon: crate::resource::build_user_avatar_id(TEST_SUPERVISOR_NAME),
-            notifications: Vec::new(),
-            channels: Vec::new(),
-        },
-    )
-    .await
-    .expect("Failed to create new admin test user");
-
-    tracing::info!("Creating test user with role admin...");
-    crate::user::create(
-        database,
-        aura_rust::User {
-            user_id: TEST_ADMIN_NAME.to_string(),
-            username: TEST_ADMIN_NAME.to_string(),
-            email: "foo@bar.baz".to_string(),
-            password: crate::auth::hash(TEST_ADMIN_PASS.to_string())
-                .expect("Failed to hash admin password"),
-            role: aura_rust::user::v1::UserRole::Admin as i32,
-            icon: crate::resource::build_user_avatar_id(TEST_ADMIN_NAME),
-            notifications: Vec::new(),
-            channels: Vec::new(),
-        },
-    )
-    .await
-    .expect("Failed to create new supervisor test user");
+        #[cfg(not(feature = "testing"))]
+        Err(Status::failed_precondition("Server not in testing mode"))
+    }
 }

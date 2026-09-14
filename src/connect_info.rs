@@ -12,7 +12,9 @@ impl Interceptor for ConnectInfoInterceptor {
 
         request.metadata_mut().insert(
             "forwarded",
-            AsciiMetadataValue::from_str(&format!("for={addr}")).unwrap(),
+            AsciiMetadataValue::from_str(&format!("for={addr}")).map_err(|err| {
+                Status::internal(format!("Failed to get metadata for address: {err}"))
+            })?,
         );
 
         Ok(request)

@@ -1,17 +1,21 @@
+use crate::auth;
 use crate::error::Error;
+use crate::logic::resource::{BUILTIN_NAMESPACE, DEFAULT_ICON_KEY};
+use crate::logic::user;
 use crate::state::ServerState;
-use crate::{auth, user};
+use crate::types::GrpcDomainType;
+use crate::types::common::Timestamp;
+use crate::types::resource::ResourceId;
+use crate::types::user::{Notifications, User, UserRole};
 use aura_rust::common::v1::ErrorCode;
 use aura_rust::user::v1::user_service_server::UserService;
 use aura_rust::user::v1::{
     AuthUserRequest, AuthUserResponse, BlockUserRequest, BlockUserResponse, CreateUserRequest,
     CreateUserResponse, DeleteUserRequest, DeleteUserResponse, GetUserRequest, GetUserResponse,
-    IsBlockedRequest, IsBlockedResponse, NotificationsRequest, NotificationsResponse,
-    SearchUsersRequest, SearchUsersResponse, UpdateUserRequest, UpdateUserResponse,
-    UserExistsRequest, UserExistsResponse, UserRole, VerifyEmailRequest, VerifyEmailResponse,
-    auth_user_response, get_user_response, is_blocked_response,
+    IsBlockedRequest, IsBlockedResponse, SearchUsersRequest, SearchUsersResponse,
+    UpdateUserRequest, UpdateUserResponse, UserExistsRequest, UserExistsResponse,
+    VerifyEmailRequest, VerifyEmailResponse, get_user_response, is_blocked_response,
 };
-use aura_rust::{DEFAULT_USER_ICON, User};
 use tonic::{Request, Response, Status};
 
 pub struct Service {
@@ -28,13 +32,13 @@ impl Service {
         request: Request<UserExistsRequest>,
     ) -> Result<UserExistsResponse, Error> {
         let user_id = request.into_inner().user_id;
-        let exists = user::exists(self.state.database(), &user_id).await?;
+        let exists = user::exists(&mut self.state.database().await?, &user_id).await?;
 
         Ok(UserExistsResponse {
             error: if exists {
-                Some(Error::new(ErrorCode::AlreadyExists, "User already exists").into())
-            } else {
                 None
+            } else {
+                Some(Error::new(ErrorCode::NotFound, "User not found").into())
             },
         })
     }
@@ -45,10 +49,13 @@ impl Service {
     ) -> Result<AuthUserResponse, Error> {
         let AuthUserRequest { user_id, password } = request.into_inner();
 
-        let token = auth::auth(self.state.database(), user_id, password).await?;
+        let (token, user) =
+            auth::auth(&mut self.state.database().await?, user_id, password).await?;
 
         Ok(AuthUserResponse {
-            result: Some(auth_user_response::Result::Token(token)),
+            token,
+            user: Some(user.into_grpc()?),
+            error: None,
         })
     }
 
@@ -67,8 +74,6 @@ impl Service {
         &self,
         request: Request<CreateUserRequest>,
     ) -> Result<CreateUserResponse, Error> {
-        let database = self.state.database();
-
         let request = request.into_inner();
 
         self.state
@@ -80,9 +85,13 @@ impl Service {
             username: request.username,
             email: request.email.clone(),
             password: request.password,
-            role: UserRole::UserUnspecified as i32,
-            icon: DEFAULT_USER_ICON.clone(),
-            notifications: Vec::new(),
+            role: UserRole::User,
+            created_at: Timestamp::now(),
+            icon: ResourceId {
+                key: DEFAULT_ICON_KEY.to_string(),
+                namespace: BUILTIN_NAMESPACE.to_string(),
+            },
+            notifications: Notifications(Vec::new()),
             channels: Vec::new(),
         };
 
@@ -93,7 +102,7 @@ impl Service {
             )
         })?;
 
-        user::create(database, user).await?;
+        user::create(&mut self.state.database().await?, user).await?;
 
         Ok(CreateUserResponse { error: None })
     }
@@ -102,14 +111,14 @@ impl Service {
         &self,
         request: Request<DeleteUserRequest>,
     ) -> Result<DeleteUserResponse, Error> {
-        let database = self.state.database();
+        let mut database = self.state.database().await?;
 
-        let user = auth::verify(database, &request).await?;
+        let user = auth::verify(&mut database, &request).await?;
         let password = request.into_inner().password;
 
-        auth::auth(database, user.user_id.clone(), password).await?;
+        auth::auth(&mut database, user.user_id.clone(), password).await?;
 
-        user::delete(database, &user.user_id).await?;
+        user::delete(&mut database, &user.user_id).await?;
 
         Ok(DeleteUserResponse { error: None })
     }
@@ -118,9 +127,9 @@ impl Service {
         &self,
         request: Request<UpdateUserRequest>,
     ) -> Result<UpdateUserResponse, Error> {
-        let database = self.state.database();
+        let mut database = self.state.database().await?;
 
-        let mut user = auth::verify(database, &request).await?;
+        let mut user = auth::verify(&mut database, &request).await?;
         let request = request.into_inner();
 
         user.username = request.username.unwrap_or(user.username);
@@ -136,23 +145,25 @@ impl Service {
                 )
             })?;
 
-        user::update(database, user).await?;
+        user::update(&mut database, user).await?;
 
         Ok(UpdateUserResponse { error: None })
     }
 
     async fn _get_user(&self, request: Request<GetUserRequest>) -> Result<GetUserResponse, Error> {
-        let database = self.state.database();
+        let mut database = self.state.database().await?;
 
-        auth::verify(database, &request).await?;
+        auth::verify(&mut database, &request).await?;
         let user = request.into_inner().user_id;
 
-        let user = user::get(database, &user)
+        let user = user::get(&mut database, &user)
             .await?
             .ok_or(Error::new(ErrorCode::NotFound, "User not found"))?;
 
         Ok(GetUserResponse {
-            result: Some(get_user_response::Result::User(user::to_profile(user))),
+            result: Some(get_user_response::Result::User(
+                user.into_profile().into_grpc()?,
+            )),
         })
     }
 
@@ -160,12 +171,16 @@ impl Service {
         &self,
         request: Request<SearchUsersRequest>,
     ) -> Result<SearchUsersResponse, Error> {
-        let database = self.state.database();
+        let mut database = self.state.database().await?;
 
-        auth::verify(database, &request).await?;
+        auth::verify(&mut database, &request).await?;
         let query = request.into_inner().query;
 
-        let users = user::search(database, query).await?;
+        let users = user::search(&mut database, query)
+            .await?
+            .into_iter()
+            .map(|u| u.into_grpc())
+            .collect::<Result<_, Error>>()?;
 
         Ok(SearchUsersResponse { users, error: None })
     }
@@ -174,11 +189,11 @@ impl Service {
         &self,
         request: Request<BlockUserRequest>,
     ) -> Result<BlockUserResponse, Error> {
-        let database = self.state.database();
-        let user = auth::verify(database, &request).await?;
+        let mut database = self.state.database().await?;
+        let user = auth::verify(&mut database, &request).await?;
         let BlockUserRequest { user_id, block } = request.into_inner();
 
-        user::block(database, user.user_id, user_id, block).await?;
+        user::block(&mut database, &user.user_id, &user_id, block).await?;
 
         Ok(BlockUserResponse { error: None })
     }
@@ -187,34 +202,14 @@ impl Service {
         &self,
         request: Request<IsBlockedRequest>,
     ) -> Result<IsBlockedResponse, Error> {
-        let database = self.state.database();
-        let user = auth::verify(database, &request).await?;
+        let mut database = self.state.database().await?;
+        let user = auth::verify(&mut database, &request).await?;
         let block_user_id = request.into_inner().user_id;
 
-        let is_blocked = user::is_blocked_by(database, user.user_id, block_user_id).await?;
+        let is_blocked = user::is_blocked_by(&mut database, &user.user_id, &block_user_id).await?;
 
         Ok(IsBlockedResponse {
             result: Some(is_blocked_response::Result::Blocked(is_blocked)),
-        })
-    }
-
-    async fn _notifications(
-        &self,
-        request: Request<NotificationsRequest>,
-    ) -> Result<NotificationsResponse, Error> {
-        let mut user = auth::verify(self.state.database(), &request).await?;
-
-        let notifications = user
-            .notifications
-            .drain(..)
-            .map(|n| n.into())
-            .collect::<Vec<_>>();
-
-        user::update(self.state.database(), user).await?;
-
-        Ok(NotificationsResponse {
-            notifications,
-            error: None,
         })
     }
 }
@@ -243,7 +238,9 @@ impl UserService for Service {
             ._auth_user(request)
             .await
             .unwrap_or_else(|err| AuthUserResponse {
-                result: Some(auth_user_response::Result::Error(err.into())),
+                token: String::new(),
+                user: None,
+                error: Some(err.into()),
             });
 
         Ok(Response::new(resp))
@@ -357,21 +354,6 @@ impl UserService for Service {
             .await
             .unwrap_or_else(|err| IsBlockedResponse {
                 result: Some(is_blocked_response::Result::Error(err.into())),
-            });
-
-        Ok(Response::new(resp))
-    }
-
-    async fn notifications(
-        &self,
-        request: Request<NotificationsRequest>,
-    ) -> Result<Response<NotificationsResponse>, Status> {
-        let resp = self
-            ._notifications(request)
-            .await
-            .unwrap_or_else(|err| NotificationsResponse {
-                notifications: Vec::new(),
-                error: Some(err.into()),
             });
 
         Ok(Response::new(resp))

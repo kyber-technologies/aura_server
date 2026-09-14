@@ -1,7 +1,7 @@
 use crate::config;
 use crate::error::Error;
+use crate::types::FastDashMap;
 use aura_rust::common::v1::ErrorCode;
-use dashmap::DashMap;
 use lettre::message::header::ContentType;
 use lettre::message::{Mailbox, MessageBuilder};
 use lettre::transport::smtp::authentication::Credentials;
@@ -13,7 +13,7 @@ const TOKEN_LEN: usize = 6;
 
 #[derive(Clone, Debug)]
 pub struct EmailRegister {
-    register: DashMap<String, EmailEntry>,
+    register: FastDashMap<String, EmailEntry>,
     trans: SmtpTransport,
 }
 
@@ -21,20 +21,21 @@ impl EmailRegister {
     pub fn new() -> Self {
         let config = config::get();
 
-        let mut pass = std::fs::read_to_string(&config.email_smtp_password)
-            .expect("Failed to read SMTP password");
+        let pass = std::fs::read_to_string(&config.email.smtp_password)
+            .expect("Failed to read SMTP password")
+            .trim()
+            .to_string();
 
-        pass = pass.trim().to_string();
-
-        let creds = Credentials::new(config.email_smtp_user.clone(), pass.to_string());
+        let creds = Credentials::new(config.email.smtp_user.clone(), pass);
 
         let (addr, port) = config
-            .email_smtp
+            .email
+            .smtp
             .split_once(':')
             .expect("Invalid SMTP address");
 
         Self {
-            register: DashMap::with_capacity(10),
+            register: FastDashMap::with_capacity_and_hasher(10, Default::default()),
             // TODO: make this configurable
             trans: SmtpTransport::builder_dangerous(addr)
                 .port(port.parse().expect("Failed to parse SMTP transport port"))
@@ -56,7 +57,7 @@ impl EmailRegister {
             .duration_since(UNIX_EPOCH)
             .expect("Failed to get current time")
             .as_secs()
-            + config::get().email_exp;
+            + config::get().email.exp;
 
         let addr = Address::from_str(&email)
             .map_err(|_| Error::new(ErrorCode::InvalidFormat, "Invalid email format"))?;
@@ -66,7 +67,7 @@ impl EmailRegister {
             .subject("Your E-Mail Verification Code")
             .from(Mailbox::new(
                 None,
-                Address::from_str(&config.email_no_reply_mail).expect("Invalid no reply email"),
+                Address::from_str(&config.email.no_reply_mail).expect("Invalid no reply email"),
             ))
             .header(ContentType::TEXT_PLAIN)
             // TODO: make this configurable
