@@ -103,12 +103,14 @@ pub async fn auth(
     }
 }
 
-pub fn hash(pass: String) -> Result<String, argon2::password_hash::Error> {
+pub fn hash(pass: String) -> Result<String, Error> {
     let argon2 = argon2();
 
     let salt = Salt::generate();
 
-    let hash = argon2.hash_password_with_salt(pass.as_bytes(), &salt)?;
+    let hash = argon2
+        .hash_password_with_salt(pass.as_bytes(), &salt)
+        .map_err(|err| Error::internal(format!("Failed to hash password: {err}")))?;
 
     Ok(hash.to_string())
 }

@@ -3,8 +3,8 @@ use crate::database::{Database, DatabaseConnection};
 use crate::email::EmailRegister;
 use crate::error::Error;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
+use tokio::sync::Notify;
 
 #[cfg(feature = "testing")]
 pub const TEST_NEW_USER_NAME: &str = "user";
@@ -25,7 +25,7 @@ pub const TEST_ADMIN_PASS: &str = "admin";
 pub struct ServerState {
     database: Database,
     emails: Arc<EmailRegister>,
-    exit: Arc<AtomicBool>,
+    exit: Arc<Notify>,
 }
 
 impl ServerState {
@@ -33,7 +33,7 @@ impl ServerState {
         Self {
             database: Database::connect().await,
             emails: Arc::new(EmailRegister::new()),
-            exit: Arc::new(AtomicBool::new(false)),
+            exit: Arc::new(Notify::new()),
         }
     }
 
@@ -41,16 +41,26 @@ impl ServerState {
         let mut interval =
             tokio::time::interval(Duration::from_secs(config::get().runtime.maintain_interval));
 
-        while !self.exit.load(Ordering::SeqCst) {
-            tracing::info!("Maintaining server state...");
-            self.emails.maintain();
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    tracing::info!("Maintaining server state...");
+                    self.emails.maintain();
+                }
 
-            interval.tick().await;
+                _ = self.exit.notified() => {
+                    break;
+                }
+            }
         }
     }
 
     pub fn set_exit(&self) {
-        self.exit.store(true, Ordering::SeqCst);
+        self.exit.notify_waiters();
+    }
+
+    pub async fn wait_for_exit(&self) {
+        self.exit.notified().await;
     }
 
     pub async fn database(&self) -> Result<DatabaseConnection, Error> {
@@ -153,5 +163,11 @@ impl ServerState {
         .expect("Failed to create admin test user");
 
         Ok(())
+    }
+
+    pub fn print_status(&self) {
+        self.database.print_status();
+        self.emails.print_status();
+        tracing::info!("Config: {:#?}", config::get());
     }
 }

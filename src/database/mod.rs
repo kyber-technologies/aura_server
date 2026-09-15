@@ -66,4 +66,8 @@ impl Database {
     pub fn dispose(&self) {
         self.pool.close();
     }
+
+    pub fn print_status(&self) {
+        tracing::info!("Database Status: {:#?}", self.pool.status())
+    }
 }

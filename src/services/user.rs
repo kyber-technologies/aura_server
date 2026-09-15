@@ -112,12 +112,7 @@ impl Service {
             channels: Vec::new(),
         };
 
-        user.password = auth::hash(user.password).map_err(|err| {
-            Error::new(
-                ErrorCode::Internal,
-                format!("Hashing password failed: {err}"),
-            )
-        })?;
+        user.password = auth::hash(user.password)?;
 
         user::create(&mut self.state.database().await?, user).await?;
 

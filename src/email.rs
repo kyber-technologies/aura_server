@@ -113,6 +113,10 @@ impl EmailRegister {
 
         self.register.shrink_to_fit();
     }
+
+    pub fn print_status(&self) {
+        tracing::info!("Email Register Length: {}", self.register.len());
+    }
 }
 
 #[derive(Clone, Debug)]

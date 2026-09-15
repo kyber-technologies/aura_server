@@ -20,6 +20,7 @@ use tracing::level_filters::LevelFilter;
 mod auth;
 mod config;
 mod connect_info;
+mod console;
 mod database;
 mod email;
 mod error;
@@ -36,6 +37,8 @@ fn main() {
 
     let config = config::get();
 
+    let (mut readline, stdout) = console::create();
+
     let logger = tracing_subscriber::FmtSubscriber::builder()
         .with_file(config.log.file_names)
         .with_target(config.log.targets)
@@ -43,7 +46,8 @@ fn main() {
         .with_thread_ids(config.log.threads)
         .with_max_level(
             LevelFilter::from_str(config.log.level.as_str()).expect("Invalid log level"),
-        );
+        )
+        .with_writer(stdout);
 
     if !config.log.time {
         logger.without_time().init();
@@ -81,8 +85,11 @@ fn main() {
 
             tokio::select! {
                 _ = serve(state.clone()) => (),
-                _ = exit_signal(state.clone()) => (),
+                _ = console::run(&mut readline, state.clone()) => (),
+                _ = state.maintain() => (),
             }
+
+            println!("\nShutting down Aura...");
 
             state.dispose();
         });
@@ -93,12 +100,6 @@ async fn serve(state: ServerState) {
 
     let addr =
         SocketAddr::from_str(config.network.address.as_str()).expect("Failed to parse address");
-
-    tracing::info!("Launching maintenance loop...");
-    let state2 = state.clone();
-    tokio::task::spawn(async move {
-        state2.maintain().await;
-    });
 
     // Create initial admin if not present
     user::create_admin(
@@ -154,17 +155,7 @@ async fn serve(state: ServerState) {
         );
 
     builder
-        .serve(addr)
+        .serve_with_shutdown(addr, state.wait_for_exit())
         .await
         .expect("Failed to serve aura service");
-}
-
-async fn exit_signal(state: ServerState) {
-    tokio::signal::ctrl_c()
-        .await
-        .expect("Failed to get Ctrl+C signal");
-
-    state.set_exit();
-
-    tracing::info!("Shutting down aura...");
 }
