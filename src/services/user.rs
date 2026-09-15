@@ -47,16 +47,33 @@ impl Service {
         &self,
         request: Request<AuthUserRequest>,
     ) -> Result<AuthUserResponse, Error> {
+        let mut database = self.state.database().await?;
+        let verify = auth::verify(&mut database, &request).await;
         let AuthUserRequest { user_id, password } = request.into_inner();
 
-        let (token, user) =
-            auth::auth(&mut self.state.database().await?, user_id, password).await?;
+        match verify {
+            Ok((user, token)) => Ok(AuthUserResponse {
+                token,
+                user: Some(user.into_grpc()?),
+                error: None,
+            }),
+            Err(e) => {
+                if ErrorCode::Unauthorized == e.code
+                    && let Some(user_id) = user_id
+                    && let Some(password) = password
+                {
+                    let (token, user) = auth::auth(&mut database, user_id, password).await?;
 
-        Ok(AuthUserResponse {
-            token,
-            user: Some(user.into_grpc()?),
-            error: None,
-        })
+                    Ok(AuthUserResponse {
+                        token,
+                        user: Some(user.into_grpc()?),
+                        error: None,
+                    })
+                } else {
+                    Err(e)
+                }
+            }
+        }
     }
 
     async fn _verify_email(
@@ -113,7 +130,7 @@ impl Service {
     ) -> Result<DeleteUserResponse, Error> {
         let mut database = self.state.database().await?;
 
-        let user = auth::verify(&mut database, &request).await?;
+        let (user, _) = auth::verify(&mut database, &request).await?;
         let password = request.into_inner().password;
 
         auth::auth(&mut database, user.user_id.clone(), password).await?;
@@ -129,7 +146,7 @@ impl Service {
     ) -> Result<UpdateUserResponse, Error> {
         let mut database = self.state.database().await?;
 
-        let mut user = auth::verify(&mut database, &request).await?;
+        let (mut user, _) = auth::verify(&mut database, &request).await?;
         let request = request.into_inner();
 
         user.username = request.username.unwrap_or(user.username);
@@ -190,7 +207,7 @@ impl Service {
         request: Request<BlockUserRequest>,
     ) -> Result<BlockUserResponse, Error> {
         let mut database = self.state.database().await?;
-        let user = auth::verify(&mut database, &request).await?;
+        let (user, _) = auth::verify(&mut database, &request).await?;
         let BlockUserRequest { user_id, block } = request.into_inner();
 
         user::block(&mut database, &user.user_id, &user_id, block).await?;
@@ -203,7 +220,7 @@ impl Service {
         request: Request<IsBlockedRequest>,
     ) -> Result<IsBlockedResponse, Error> {
         let mut database = self.state.database().await?;
-        let user = auth::verify(&mut database, &request).await?;
+        let (user, _) = auth::verify(&mut database, &request).await?;
         let block_user_id = request.into_inner().user_id;
 
         let is_blocked = user::is_blocked_by(&mut database, &user.user_id, &block_user_id).await?;

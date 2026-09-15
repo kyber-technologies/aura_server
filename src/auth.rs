@@ -44,7 +44,10 @@ pub async fn init() {
     .expect("Failed to initialize argon2 keys");
 }
 
-pub async fn verify<T>(database: &mut DatabaseConnection, req: &Request<T>) -> Result<User, Error> {
+pub async fn verify<T>(
+    database: &mut DatabaseConnection,
+    req: &Request<T>,
+) -> Result<(User, String), Error> {
     let meta = req.metadata();
 
     let (_, key) = keys();
@@ -63,6 +66,7 @@ pub async fn verify<T>(database: &mut DatabaseConnection, req: &Request<T>) -> R
 
         user::get(database, &claim.claims.user_id)
             .await?
+            .map(|user| (user, token.to_string()))
             .ok_or(Error::new(ErrorCode::NotFound, "User not found"))
     } else {
         Err(Error::new(ErrorCode::Unauthorized, "Missing token"))

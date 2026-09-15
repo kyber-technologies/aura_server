@@ -29,7 +29,7 @@ impl Service {
     ) -> Result<CreateChannelResponse, Error> {
         let mut database = self.state.database().await?;
 
-        let user = auth::verify(&mut database, &request).await?;
+        let (user, _) = auth::verify(&mut database, &request).await?;
         let channel_args = request.into_inner();
         let channel_id = chat::build_channel_id(&mut database).await?;
 
@@ -70,7 +70,7 @@ impl Service {
     ) -> Result<ReadMessagesResponse, Error> {
         let mut database = self.state.database().await?;
 
-        let user = auth::verify(&mut database, &request).await?;
+        let (user, _) = auth::verify(&mut database, &request).await?;
 
         let msg_args = request.into_inner();
 
@@ -105,7 +105,7 @@ impl Service {
     ) -> Result<SendMessageResponse, Error> {
         let mut database = self.state.database().await?;
 
-        let user = auth::verify(&mut database, &request).await?;
+        let (user, _) = auth::verify(&mut database, &request).await?;
         let msg_args = request.into_inner();
 
         let content = msg_args.content.ok_or(Error::invalid_format())?;
@@ -145,7 +145,7 @@ impl Service {
     ) -> Result<DeleteMessageResponse, Error> {
         let mut database = self.state.database().await?;
 
-        let user = auth::verify(&mut database, &request).await?;
+        let (user, _) = auth::verify(&mut database, &request).await?;
         let message = chat::get_msg(&mut database, &request.into_inner().message_id)
             .await?
             .ok_or(Error::new(ErrorCode::NotFound, "Message not found"))?;

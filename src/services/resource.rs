@@ -31,7 +31,7 @@ impl Service {
         request: Request<Streaming<UploadRequest>>,
     ) -> Result<UploadResponse, Error> {
         let mut database = self.state.database().await?;
-        let user = auth::verify(&mut database, &request).await?;
+        let (user, _) = auth::verify(&mut database, &request).await?;
         let mut stream = SafeStreaming::new(request.into_inner());
 
         let meta_req = stream.next_safe().await.ok_or(Error::invalid_format())??;
@@ -89,7 +89,7 @@ impl Service {
     ) -> Result<BoxStream<DownloadResponse>, Error> {
         let mut database = self.state.database().await?;
 
-        let user = auth::verify(&mut database, &request).await?;
+        let (user, _) = auth::verify(&mut database, &request).await?;
         let resource_id = ResourceId::from_grpc(
             request
                 .into_inner()
@@ -126,7 +126,7 @@ impl Service {
     ) -> Result<GetResourceMetaResponse, Error> {
         let mut database = self.state.database().await?;
 
-        let user = auth::verify(&mut database, &request).await?;
+        let (user, _) = auth::verify(&mut database, &request).await?;
         let resource_id = ResourceId::from_grpc(
             request
                 .into_inner()
