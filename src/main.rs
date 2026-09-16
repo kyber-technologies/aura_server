@@ -80,9 +80,6 @@ fn main() {
             tracing::info!("Initializing server state...");
             let state = ServerState::create().await;
 
-            #[cfg(feature = "testing")]
-            state.clear_state().await.expect("Failed to clear state");
-
             tokio::select! {
                 _ = serve(state.clone()) => (),
                 _ = console::run(&mut readline, state.clone()) => (),

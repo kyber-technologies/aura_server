@@ -2,6 +2,7 @@ use crate::database::DatabaseConnection;
 use crate::database::channel as ch_db;
 use crate::database::message as msg_db;
 use crate::error::Error;
+use crate::logic::user;
 use crate::logic::user::push_notifications;
 use crate::schema::{channel_members, channels, messages};
 use crate::types::DatabaseDomainType;
@@ -17,11 +18,15 @@ pub const ID_LENGTH: usize = 10;
 
 pub async fn create_channel(
     database: &mut DatabaseConnection,
-    channel: Channel,
+    mut channel: Channel,
     owner: String,
 ) -> Result<Channel, Error> {
     database
         .transaction(async |database| {
+            channel
+                .members
+                .insert(owner.clone(), ChannelPermission::Manager);
+
             let channel_data = ch_db::Channel {
                 channel_id: channel.channel_id.clone(),
                 name: channel.name.clone(),
@@ -39,7 +44,7 @@ pub async fn create_channel(
                 .map(|(user_id, permission)| ch_db::ChannelMember {
                     channel_id: channel.channel_id.clone(),
                     user_id: user_id.clone(),
-                    permission: permission.clone(),
+                    permission: *permission,
                 })
                 .collect::<Vec<_>>();
 
@@ -51,21 +56,259 @@ pub async fn create_channel(
             }
 
             for user_id in channel.members.keys() {
+                if user_id == &owner {
+                    continue;
+                }
+
                 push_notifications(
                     database,
                     user_id,
                     [Notification::Invite {
-                        // TODO: reinforce so that the notification_id is unique
                         notification_id: nanoid!(ID_LENGTH),
                         timestamp: Timestamp::now(),
                         channel_id: channel.channel_id.clone(),
                         invited_by: owner.clone(),
+                        uninvited: false,
                     }],
                 )
                 .await?;
             }
 
             Ok::<Channel, Error>(channel)
+        })
+        .await
+}
+
+pub async fn delete_channel(
+    database: &mut DatabaseConnection,
+    channel_id: String,
+    user_id: String,
+) -> Result<(), Error> {
+    if !channel_exists(database, &channel_id).await? {
+        return Err(Error::new(ErrorCode::NotFound, "Channel not found"));
+    }
+
+    let permission = get_channel_member_perm(database, &channel_id, &user_id).await?;
+
+    if permission != ChannelPermission::Manager {
+        return Err(Error::new(
+            ErrorCode::Restricted,
+            "Only channel managers can delete a channel",
+        ));
+    }
+
+    let deleted = diesel::delete(channels::table.find(channel_id))
+        .execute(database)
+        .await?;
+
+    if deleted == 0 {
+        return Err(Error::new(ErrorCode::NotFound, "Channel not found"));
+    }
+
+    Ok(())
+}
+
+pub async fn invite(
+    database: &mut DatabaseConnection,
+    channel_id: String,
+    user_id: String,
+    invited_user_id: String,
+) -> Result<(), Error> {
+    database
+        .transaction(async |database| {
+            if !channel_exists(database, &channel_id).await? {
+                return Err(Error::new(ErrorCode::NotFound, "Channel not found"));
+            }
+
+            let permission = get_channel_member_perm(database, &channel_id, &user_id).await?;
+
+            if permission != ChannelPermission::Manager {
+                return Err(Error::new(
+                    ErrorCode::Restricted,
+                    "Only channel managers can invite users",
+                ));
+            }
+
+            if !user::exists(database, &invited_user_id).await? {
+                return Err(Error::new(ErrorCode::NotFound, "User not found"));
+            }
+
+            let already_member = channel_members::table
+                .filter(channel_members::channel_id.eq(&channel_id))
+                .filter(channel_members::user_id.eq(&invited_user_id))
+                .select(channel_members::user_id)
+                .first::<String>(database)
+                .await
+                .optional()?
+                .is_some();
+
+            if already_member {
+                return Err(Error::new(
+                    ErrorCode::AlreadyExists,
+                    "User is already in channel",
+                ));
+            }
+
+            let member = ch_db::ChannelMember {
+                channel_id: channel_id.clone(),
+                user_id: invited_user_id.clone(),
+                permission: ChannelPermission::ReadWrite,
+            };
+
+            diesel::insert_into(channel_members::table)
+                .values(&member)
+                .execute(database)
+                .await
+                .map_err(|err| match err {
+                    diesel::result::Error::DatabaseError(
+                        diesel::result::DatabaseErrorKind::UniqueViolation,
+                        _,
+                    ) => Error::new(ErrorCode::AlreadyExists, "User is already in channel"),
+                    err => err.into(),
+                })?;
+
+            push_notifications(
+                database,
+                &invited_user_id,
+                [Notification::Invite {
+                    // TODO: reinforce so that the notification_id is unique
+                    notification_id: nanoid!(ID_LENGTH),
+                    timestamp: Timestamp::now(),
+                    channel_id,
+                    invited_by: user_id,
+                    uninvited: false,
+                }],
+            )
+            .await?;
+
+            Ok(())
+        })
+        .await
+}
+
+pub async fn uninvite(
+    database: &mut DatabaseConnection,
+    channel_id: String,
+    user_id: String,
+    invited_user_id: String,
+) -> Result<(), Error> {
+    database
+        .transaction(async |database| {
+            if !channel_exists(database, &channel_id).await? {
+                return Err(Error::new(ErrorCode::NotFound, "Channel not found"));
+            }
+
+            let permission = get_channel_member_perm(database, &channel_id, &user_id).await?;
+
+            if permission != ChannelPermission::Manager {
+                return Err(Error::new(
+                    ErrorCode::Restricted,
+                    "Only channel managers can uninvite users",
+                ));
+            }
+
+            let invited_user_permission =
+                get_channel_member_perm(database, &channel_id, &invited_user_id).await?;
+
+            if invited_user_permission == ChannelPermission::Manager {
+                return Err(Error::new(
+                    ErrorCode::Restricted,
+                    "Channel managers cannot be uninvited",
+                ));
+            }
+
+            let deleted = diesel::delete(
+                channel_members::table
+                    .filter(channel_members::channel_id.eq(&channel_id))
+                    .filter(channel_members::user_id.eq(&invited_user_id)),
+            )
+            .execute(database)
+            .await?;
+
+            if deleted == 0 {
+                return Err(Error::new(ErrorCode::NotFound, "User not in channel"));
+            }
+
+            push_notifications(
+                database,
+                &invited_user_id,
+                [Notification::Invite {
+                    notification_id: nanoid!(ID_LENGTH),
+                    timestamp: Timestamp::now(),
+                    channel_id,
+                    invited_by: user_id,
+                    uninvited: true,
+                }],
+            )
+            .await?;
+
+            Ok(())
+        })
+        .await
+}
+
+pub async fn set_channel_member_perm(
+    database: &mut DatabaseConnection,
+    channel_id: String,
+    user_id: String,
+    target_user_id: String,
+    permission: ChannelPermission,
+) -> Result<(), Error> {
+    database
+        .transaction(async |database| {
+            if !channel_exists(database, &channel_id).await? {
+                return Err(Error::new(ErrorCode::NotFound, "Channel not found"));
+            }
+
+            let issuer_permission =
+                get_channel_member_perm(database, &channel_id, &user_id).await?;
+
+            if issuer_permission != ChannelPermission::Manager {
+                return Err(Error::new(
+                    ErrorCode::Restricted,
+                    "Only channel managers can change member permissions",
+                ));
+            }
+
+            let target_permission =
+                get_channel_member_perm(database, &channel_id, &target_user_id).await?;
+
+            if target_user_id != user_id && target_permission == ChannelPermission::Manager {
+                return Err(Error::new(
+                    ErrorCode::Restricted,
+                    "Managers cannot change another manager's permission",
+                ));
+            }
+
+            if target_user_id == user_id
+                && target_permission == ChannelPermission::Manager
+                && permission != ChannelPermission::Manager
+            {
+                let manager_count = channel_members::table
+                    .filter(channel_members::channel_id.eq(&channel_id))
+                    .filter(channel_members::permission.eq(ChannelPermission::Manager))
+                    .count()
+                    .get_result::<i64>(database)
+                    .await?;
+
+                if manager_count <= 1 {
+                    return Err(Error::new(
+                        ErrorCode::Restricted,
+                        "Cannot remove the only manager from a channel",
+                    ));
+                }
+            }
+
+            diesel::update(
+                channel_members::table
+                    .filter(channel_members::channel_id.eq(&channel_id))
+                    .filter(channel_members::user_id.eq(&target_user_id)),
+            )
+            .set(channel_members::permission.eq(permission))
+            .execute(database)
+            .await?;
+
+            Ok(())
         })
         .await
 }

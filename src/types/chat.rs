@@ -182,7 +182,7 @@ impl GrpcDomainType for Content {
 
 impl JsonDatabaseDomainType for Content {}
 
-#[derive(Debug, Clone, PartialEq, Eq, DbEnum)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, DbEnum)]
 #[db_enum(existing_type_path = "crate::schema::sql_types::ChannelPermission")]
 pub enum ChannelPermission {
     #[db_enum(rename = "read_only")]

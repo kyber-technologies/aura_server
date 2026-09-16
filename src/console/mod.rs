@@ -30,14 +30,23 @@ pub type CommandFn = fn(
 ) -> Pin<Box<dyn Future<Output = Result<(), CommandError>>>>;
 
 static COMMANDS: &[Command] = &[
+    general::EXIT,
     general::STATUS,
-    general::CLEAR,
+    general::CLEAR_CONSOLE,
+    #[cfg(feature = "testing")]
+    general::CLEAR_STATE,
     user::CREATE,
     user::DELETE,
     user::AUTH,
     user::SEARCH,
     chat::CREATE,
+    chat::DELETE,
     chat::GET,
+    chat::INVITE,
+    chat::SET_PERM,
+    chat::SEND,
+    chat::READ,
+    chat::DELETE_MSG,
 ];
 
 pub fn create() -> (Readline, tracing_writer::TracingWriter) {
@@ -67,6 +76,10 @@ pub async fn run(readline: &mut Readline, state: ServerState) {
                         Ok(()) => {}
                         Err(e) => {
                             tracing::error!("Failed to execute command: {}", e);
+
+                            if let CommandError::Args(_) = e {
+                                tracing::info!("Command Usage: {}", command.usage);
+                            }
                         }
                     }
                 } else if command == "help" {
@@ -90,8 +103,7 @@ pub async fn run(readline: &mut Readline, state: ServerState) {
             }
 
             ReadlineEvent::Interrupted | ReadlineEvent::Eof => {
-                state.set_exit();
-                break;
+                tracing::info!("Use 'exit' to exit the application.");
             }
         }
     }
@@ -106,23 +118,31 @@ pub struct Command {
 }
 
 #[derive(Debug, Clone)]
-pub struct CommandError(String);
+pub enum CommandError {
+    Aura(crate::error::Error),
+    Args(no_pico_args::Error),
+    Other(String),
+}
 
 impl From<crate::error::Error> for CommandError {
     fn from(value: crate::error::Error) -> Self {
-        Self(value.to_string())
+        Self::Aura(value)
     }
 }
 
 impl From<no_pico_args::Error> for CommandError {
     fn from(value: no_pico_args::Error) -> Self {
-        Self(value.to_string())
+        Self::Args(value)
     }
 }
 
 impl Display for CommandError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        match self {
+            CommandError::Aura(e) => write!(f, "Failed operation: {}", e),
+            CommandError::Args(e) => write!(f, "Failed parsing arguments: {}", e),
+            CommandError::Other(e) => write!(f, "{}", e),
+        }
     }
 }
 

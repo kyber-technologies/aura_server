@@ -184,6 +184,7 @@ pub enum Notification {
         timestamp: Timestamp,
         channel_id: String,
         invited_by: String,
+        uninvited: bool,
     },
     Message {
         notification_id: String,
@@ -213,6 +214,7 @@ impl GrpcDomainType for Notification {
                 timestamp: Timestamp::from_grpc(value.timestamp.ok_or(Error::invalid_format())?)?,
                 channel_id: not.channel_id,
                 invited_by: not.invited_by,
+                uninvited: not.uninvited,
             }),
             grpc::notification::Notification::Message(not) => Ok(Self::Message {
                 notification_id: value.notification_id,
@@ -231,6 +233,7 @@ impl GrpcDomainType for Notification {
                 timestamp,
                 channel_id,
                 invited_by,
+                uninvited,
             } => Ok(grpc::Notification {
                 notification_id,
                 timestamp: Some(timestamp.into_grpc()?),
@@ -238,6 +241,7 @@ impl GrpcDomainType for Notification {
                     grpc::InviteNotification {
                         channel_id,
                         invited_by,
+                        uninvited,
                     },
                 )),
             }),
@@ -262,7 +266,7 @@ impl GrpcDomainType for Notification {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, DbEnum)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, DbEnum)]
 #[db_enum(existing_type_path = "crate::schema::sql_types::UserRole")]
 pub enum UserRole {
     #[db_enum(rename = "user")]

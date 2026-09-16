@@ -1,12 +1,12 @@
 cargo-features = ["profile-rustflags"]
 
 [package]
-name = "aura_server"
+name = "aura-server"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tokio = { version = "1.53.1", features = ["rt-multi-thread", "fs", "time", "signal", "parking_lot"] }
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "fs", "time", "parking_lot"] }
 tokio-util = { version = "0.7.19", features = ["io"] }
 tokio-stream = { version = "0.1.19", default-features = false }
 

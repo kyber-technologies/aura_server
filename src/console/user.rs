@@ -12,7 +12,7 @@ use std::pin::Pin;
 pub const CREATE: Command = Command {
     name: "create-user",
     description: "Creates or updates a user",
-    usage: "create-user [-update (updated existing user)] <id> <username> <email> <password> <role>",
+    usage: "create-user [--update | -u (updated existing user)] <id> <username> <email> <password> <role>",
     execute: |mut args: Arguments,
               state: ServerState|
      -> Pin<Box<dyn Future<Output = Result<(), CommandError>>>> {
@@ -25,8 +25,8 @@ pub const CREATE: Command = Command {
                 "user" => Ok(UserRole::User),
                 "moderator" => Ok(UserRole::Moderator),
                 "admin" => Ok(UserRole::Admin),
-                _ => Err(CommandError(
-                    "Invalid role. Use: 'user', 'moderator' or 'admin'.".to_string(),
+                _ => Err(CommandError::Other(
+                    "Invalid role. Valid: 'user', 'moderator', 'admin'.".to_string(),
                 )),
             })?;
 
@@ -45,13 +45,13 @@ pub const CREATE: Command = Command {
                 channels: Vec::new(),
             };
 
-            if args.contains("-update") {
+            if args.contains(["-u", "--update"]) {
                 user::update(&mut state.database().await?, user).await?;
             } else {
                 user::create(&mut state.database().await?, user).await?;
             }
 
-            tracing::info!("Successfully created user '{user_id}'.");
+            tracing::info!("Created user '{user_id}'.");
 
             Ok(())
         })
@@ -71,7 +71,7 @@ pub const DELETE: Command = Command {
             let mut database = state.database().await?;
 
             if !user::exists(&mut database, &user_id).await? {
-                return Err(CommandError("User not found".to_string()));
+                return Err(CommandError::Other("User not found".to_string()));
             }
 
             user::delete(&mut database, &user_id).await?;

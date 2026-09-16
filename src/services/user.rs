@@ -49,7 +49,7 @@ impl Service {
     ) -> Result<AuthUserResponse, Error> {
         let mut database = self.state.database().await?;
         let verify = auth::verify(&mut database, &request).await;
-        let AuthUserRequest { user_id, password } = request.into_inner();
+        let args = request.into_inner();
 
         match verify {
             Ok((user, token)) => Ok(AuthUserResponse {
@@ -59,8 +59,8 @@ impl Service {
             }),
             Err(e) => {
                 if ErrorCode::Unauthorized == e.code
-                    && let Some(user_id) = user_id
-                    && let Some(password) = password
+                    && let Some(user_id) = args.user_id
+                    && let Some(password) = args.password
                 {
                     let (token, user) = auth::auth(&mut database, user_id, password).await?;
 
@@ -80,9 +80,9 @@ impl Service {
         &self,
         request: Request<VerifyEmailRequest>,
     ) -> Result<VerifyEmailResponse, Error> {
-        let VerifyEmailRequest { email } = request.into_inner();
+        let args = request.into_inner();
 
-        self.state.emails().register_email(email)?;
+        self.state.emails().register_email(args.email)?;
 
         Ok(VerifyEmailResponse { error: None })
     }
@@ -91,17 +91,17 @@ impl Service {
         &self,
         request: Request<CreateUserRequest>,
     ) -> Result<CreateUserResponse, Error> {
-        let request = request.into_inner();
+        let args = request.into_inner();
 
         self.state
             .emails()
-            .verify_email(&request.email, request.verification_token)?;
+            .verify_email(&args.email, args.verification_token)?;
 
         let mut user = User {
-            user_id: request.user_id,
-            username: request.username,
-            email: request.email.clone(),
-            password: request.password,
+            user_id: args.user_id,
+            username: args.username,
+            email: args.email.clone(),
+            password: args.password,
             role: UserRole::User,
             created_at: Timestamp::now(),
             icon: ResourceId {
@@ -142,11 +142,11 @@ impl Service {
         let mut database = self.state.database().await?;
 
         let (mut user, _) = auth::verify(&mut database, &request).await?;
-        let request = request.into_inner();
+        let args = request.into_inner();
 
-        user.username = request.username.unwrap_or(user.username);
-        user.email = request.email.unwrap_or(user.email);
-        user.password = request
+        user.username = args.username.unwrap_or(user.username);
+        user.email = args.email.unwrap_or(user.email);
+        user.password = args
             .password
             .map(auth::hash)
             .unwrap_or(Ok(user.password))

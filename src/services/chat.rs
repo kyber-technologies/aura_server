@@ -7,9 +7,10 @@ use crate::types::common::Timestamp;
 use crate::types::{FastMap, GrpcDomainType};
 use aura_rust::chat::v1::chat_service_server::ChatService;
 use aura_rust::chat::v1::{
-    CreateChannelRequest, CreateChannelResponse, DeleteMessageRequest, DeleteMessageResponse,
+    CreateChannelRequest, CreateChannelResponse, DeleteChannelRequest, DeleteChannelResponse,
+    DeleteMessageRequest, DeleteMessageResponse, InviteChannelRequest, InviteChannelResponse,
     ReadMessagesRequest, ReadMessagesResponse, SendMessageRequest, SendMessageResponse,
-    create_channel_response, send_message_response,
+    SetUserPermRequest, SetUserPermResponse, create_channel_response, send_message_response,
 };
 use aura_rust::common::v1::ErrorCode;
 use tonic::{Request, Response, Status};
@@ -64,6 +65,61 @@ impl Service {
         })
     }
 
+    async fn _delete_channel(
+        &self,
+        request: Request<DeleteChannelRequest>,
+    ) -> Result<DeleteChannelResponse, Error> {
+        let mut database = self.state.database().await?;
+
+        let (user, _) = auth::verify(&mut database, &request).await?;
+
+        chat::delete_channel(&mut database, user.user_id, request.into_inner().channel_id).await?;
+
+        Ok(DeleteChannelResponse { error: None })
+    }
+
+    async fn _set_user_perm(
+        &self,
+        request: Request<SetUserPermRequest>,
+    ) -> Result<SetUserPermResponse, Error> {
+        let mut database = self.state.database().await?;
+
+        let (user, _) = auth::verify(&mut database, &request).await?;
+
+        let args = request.into_inner();
+
+        let perm = args.permission();
+
+        chat::set_channel_member_perm(
+            &mut database,
+            args.channel_id,
+            user.user_id,
+            args.user_id,
+            ChannelPermission::from_grpc(perm)?,
+        )
+        .await?;
+
+        Ok(SetUserPermResponse { error: None })
+    }
+
+    async fn _invite_channel(
+        &self,
+        request: Request<InviteChannelRequest>,
+    ) -> Result<InviteChannelResponse, Error> {
+        let mut database = self.state.database().await?;
+
+        let (user, _) = auth::verify(&mut database, &request).await?;
+        let args = request.into_inner();
+
+        if args.uninvite {
+            chat::uninvite(&mut database, args.channel_id, user.user_id, args.user_id).await?;
+        } else {
+            chat::invite(&mut database, args.channel_id, user.user_id, args.user_id).await?;
+        }
+
+        Ok(InviteChannelResponse { error: None })
+    }
+
     async fn _read_messages(
         &self,
         request: Request<ReadMessagesRequest>,
@@ -72,9 +128,9 @@ impl Service {
 
         let (user, _) = auth::verify(&mut database, &request).await?;
 
-        let msg_args = request.into_inner();
+        let args = request.into_inner();
 
-        let channel = chat::get_channel(&mut database, &msg_args.channel_id)
+        let channel = chat::get_channel(&mut database, &args.channel_id)
             .await?
             .ok_or(Error::new(ErrorCode::NotFound, "Channel not found"))?;
 
@@ -84,9 +140,9 @@ impl Service {
 
         let messages = chat::read_messages(
             &mut database,
-            &msg_args.channel_id,
-            msg_args.limit,
-            Timestamp::from_grpc(msg_args.start_time.ok_or(Error::invalid_format())?)?,
+            &args.channel_id,
+            args.limit,
+            Timestamp::from_grpc(args.start_time.ok_or(Error::invalid_format())?)?,
         )
         .await?;
 
@@ -106,13 +162,12 @@ impl Service {
         let mut database = self.state.database().await?;
 
         let (user, _) = auth::verify(&mut database, &request).await?;
-        let msg_args = request.into_inner();
+        let args = request.into_inner();
 
-        let content = msg_args.content.ok_or(Error::invalid_format())?;
+        let content = args.content.ok_or(Error::invalid_format())?;
 
         let perm =
-            chat::get_channel_member_perm(&mut database, &msg_args.channel_id, &user.user_id)
-                .await?;
+            chat::get_channel_member_perm(&mut database, &args.channel_id, &user.user_id).await?;
 
         if perm == ChannelPermission::ReadWrite || perm == ChannelPermission::Manager {
             let id = chat::build_message_id(&mut database).await?;
@@ -121,7 +176,7 @@ impl Service {
                 Message {
                     message_id: id,
                     user_id: user.user_id,
-                    channel_id: msg_args.channel_id,
+                    channel_id: args.channel_id,
                     content: Content::from_grpc(content)?,
                     created_at: Timestamp::now(),
                 },
@@ -179,6 +234,48 @@ impl ChatService for Service {
                 .await
                 .unwrap_or_else(|err| CreateChannelResponse {
                     result: Some(create_channel_response::Result::Error(err.into())),
+                });
+
+        Ok(Response::new(resp))
+    }
+
+    async fn delete_channel(
+        &self,
+        request: Request<DeleteChannelRequest>,
+    ) -> Result<Response<DeleteChannelResponse>, Status> {
+        let resp =
+            self._delete_channel(request)
+                .await
+                .unwrap_or_else(|err| DeleteChannelResponse {
+                    error: Some(err.into()),
+                });
+
+        Ok(Response::new(resp))
+    }
+
+    async fn set_user_perm(
+        &self,
+        request: Request<SetUserPermRequest>,
+    ) -> Result<Response<SetUserPermResponse>, Status> {
+        let resp = self
+            ._set_user_perm(request)
+            .await
+            .unwrap_or_else(|err| SetUserPermResponse {
+                error: Some(err.into()),
+            });
+
+        Ok(Response::new(resp))
+    }
+
+    async fn invite_channel(
+        &self,
+        request: Request<InviteChannelRequest>,
+    ) -> Result<Response<InviteChannelResponse>, Status> {
+        let resp =
+            self._invite_channel(request)
+                .await
+                .unwrap_or_else(|err| InviteChannelResponse {
+                    error: Some(err.into()),
                 });
 
         Ok(Response::new(resp))
