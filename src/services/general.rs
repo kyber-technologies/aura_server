@@ -110,9 +110,9 @@ impl GeneralService for Service {
             use crate::types::GrpcDomainType;
 
             Ok(Response::new(GetTestUsersResponse {
-                user: Some(crate::testing::test_user().into_grpc().unwrap()),
-                moderator: Some(crate::testing::moderator_user().into_grpc().unwrap()),
-                admin: Some(crate::testing::admin_user().into_grpc().unwrap()),
+                user: Some(crate::testing::test_user(false).into_grpc().unwrap()),
+                moderator: Some(crate::testing::moderator_user(false).into_grpc().unwrap()),
+                admin: Some(crate::testing::admin_user(false).into_grpc().unwrap()),
             }))
         }
 
