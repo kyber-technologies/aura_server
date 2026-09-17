@@ -6,21 +6,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Notify;
 
-#[cfg(feature = "testing")]
-pub const TEST_NEW_USER_NAME: &str = "user";
-#[cfg(feature = "testing")]
-pub const TEST_NEW_USER_PASS: &str = "user";
-
-#[cfg(feature = "testing")]
-pub const TEST_MODERATOR_NAME: &str = "moderator";
-#[cfg(feature = "testing")]
-pub const TEST_MODERATOR_PASS: &str = "moderator";
-
-#[cfg(feature = "testing")]
-pub const TEST_ADMIN_NAME: &str = "admin";
-#[cfg(feature = "testing")]
-pub const TEST_ADMIN_PASS: &str = "admin";
-
 #[derive(Clone)]
 pub struct ServerState {
     database: Database,
@@ -77,8 +62,6 @@ impl ServerState {
 
     #[cfg(feature = "testing")]
     pub async fn clear_state(&self) -> Result<(), Error> {
-        use crate::types::common::Timestamp;
-        use crate::types::user::{Notifications, User, UserRole};
         use diesel_async::RunQueryDsl;
 
         tracing::info!("Detected test environment. Clearing database...");
@@ -104,63 +87,21 @@ impl ServerState {
 
         tracing::info!("Creating test user with role user...");
 
-        crate::user::create(
-            &mut database,
-            User {
-                user_id: TEST_NEW_USER_NAME.to_string(),
-                username: TEST_NEW_USER_NAME.to_string(),
-                email: "user@foo.bar".to_string(),
-                password: crate::auth::hash(TEST_NEW_USER_PASS.to_string())
-                    .expect("Failed to hash new user password"),
-                role: UserRole::User,
-                icon: crate::logic::resource::build_user_avatar_id(TEST_NEW_USER_NAME),
-                notifications: Notifications(Vec::new()),
-                channels: Vec::new(),
-                created_at: Timestamp::now(),
-            },
-        )
-        .await
-        .expect("Failed to create new test user");
+        crate::user::create(&mut database, crate::testing::test_user())
+            .await
+            .expect("Failed to create new test user");
 
         tracing::info!("Creating test user with role moderator...");
 
-        crate::user::create(
-            &mut database,
-            User {
-                user_id: TEST_MODERATOR_NAME.to_string(),
-                username: TEST_MODERATOR_NAME.to_string(),
-                email: "moderator@foo.bar".to_string(),
-                password: crate::auth::hash(TEST_MODERATOR_PASS.to_string())
-                    .expect("Failed to hash moderator password"),
-                role: UserRole::Moderator,
-                icon: crate::logic::resource::build_user_avatar_id(TEST_MODERATOR_NAME),
-                notifications: Notifications(Vec::new()),
-                channels: Vec::new(),
-                created_at: Timestamp::now(),
-            },
-        )
-        .await
-        .expect("Failed to create moderator test user");
+        crate::user::create(&mut database, crate::testing::moderator_user())
+            .await
+            .expect("Failed to create moderator test user");
 
         tracing::info!("Creating test user with role admin...");
 
-        crate::user::create(
-            &mut database,
-            User {
-                user_id: TEST_ADMIN_NAME.to_string(),
-                username: TEST_ADMIN_NAME.to_string(),
-                email: "admin@foo.bar".to_string(),
-                password: crate::auth::hash(TEST_ADMIN_PASS.to_string())
-                    .expect("Failed to hash admin password"),
-                role: UserRole::Admin,
-                icon: crate::logic::resource::build_user_avatar_id(TEST_ADMIN_NAME),
-                notifications: Notifications(Vec::new()),
-                channels: Vec::new(),
-                created_at: Timestamp::now(),
-            },
-        )
-        .await
-        .expect("Failed to create admin test user");
+        crate::user::create(&mut database, crate::testing::admin_user())
+            .await
+            .expect("Failed to create admin test user");
 
         Ok(())
     }

@@ -201,17 +201,17 @@ pub fn from_builtin(id: &ResourceId) -> Option<PathBuf> {
     }
 }
 
-pub fn is_user_avatar(id: &ResourceId, user: Option<&str>) -> bool {
-    if let Some(user) = user {
-        id.namespace.as_str() == format!("user.{user}") && id.key.as_str() == "avatar.png"
+pub fn is_user_avatar(id: &ResourceId, user_id: Option<&str>) -> bool {
+    if let Some(user_id) = user_id {
+        id.namespace.as_str() == format!("user.{user_id}") && id.key.as_str() == "avatar.png"
     } else {
         id.namespace.as_str().starts_with("user.") && id.key.as_str() == "avatar.png"
     }
 }
 
-pub fn build_user_avatar_id(user: &str) -> ResourceId {
+pub fn build_user_avatar_id(user_id: &str) -> ResourceId {
     ResourceId {
-        namespace: format!("user.{user}"),
+        namespace: format!("user.{user_id}"),
         key: "avatar.png".to_string(),
     }
 }

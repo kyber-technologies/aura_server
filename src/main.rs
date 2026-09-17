@@ -31,6 +31,9 @@ mod state;
 mod types;
 mod utils;
 
+#[cfg(feature = "testing")]
+mod testing;
+
 fn main() {
     println!("Loading configuration...");
     config::init();

@@ -5,6 +5,7 @@ use aura_rust::general::v1::general_service_server::GeneralService;
 use aura_rust::general::v1::{
     ClearStateRequest, ClearStateResponse, GetConfigRequest, GetConfigResponse,
     GetEmailTokenRequest, GetEmailTokenResponse, GetServicesRequest, GetServicesResponse,
+    GetTestUsersRequest, GetTestUsersResponse,
 };
 use tonic::{Request, Response, Status};
 
@@ -94,6 +95,25 @@ impl GeneralService for Service {
                 .collect::<Vec<_>>();
 
             Ok(Response::new(GetServicesResponse { services }))
+        }
+
+        #[cfg(not(feature = "testing"))]
+        Err(Status::failed_precondition("Server not in testing mode"))
+    }
+
+    async fn get_test_users(
+        &self,
+        _: Request<GetTestUsersRequest>,
+    ) -> Result<Response<GetTestUsersResponse>, Status> {
+        #[cfg(feature = "testing")]
+        {
+            use crate::types::GrpcDomainType;
+
+            Ok(Response::new(GetTestUsersResponse {
+                user: Some(crate::testing::test_user().into_grpc().unwrap()),
+                moderator: Some(crate::testing::moderator_user().into_grpc().unwrap()),
+                admin: Some(crate::testing::admin_user().into_grpc().unwrap()),
+            }))
         }
 
         #[cfg(not(feature = "testing"))]
