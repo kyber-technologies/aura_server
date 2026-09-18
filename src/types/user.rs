@@ -61,7 +61,13 @@ impl GrpcDomainType for User {
             user_id: self.user_id,
             username: self.username,
             email: self.email,
-            password: String::new(),
+            password: if cfg!(feature = "testing") {
+                // Keep password in testing mode
+                self.password
+            } else {
+                // Return blank password in production
+                String::new()
+            },
             role: UserRole::into_grpc(self.role)?.into(),
             created_at: Some(self.created_at.into_grpc()?),
             icon: Some(self.icon.into_grpc()?),
