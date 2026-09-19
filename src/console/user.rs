@@ -1,6 +1,5 @@
 use crate::auth;
 use crate::console::{Command, CommandError};
-use crate::logic::resource::{BUILTIN_NAMESPACE, DEFAULT_ICON_KEY};
 use crate::logic::user;
 use crate::state::ServerState;
 use crate::types::common::Timestamp;
@@ -37,10 +36,7 @@ pub const CREATE: Command = Command {
                 password: auth::hash(password)?,
                 role,
                 created_at: Timestamp::now(),
-                icon: ResourceId {
-                    key: DEFAULT_ICON_KEY.to_string(),
-                    namespace: BUILTIN_NAMESPACE.to_string(),
-                },
+                icon: ResourceId::default_user_icon(),
                 notifications: Notifications(Vec::new()),
                 channels: Vec::new(),
             };

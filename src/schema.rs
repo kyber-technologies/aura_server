@@ -6,6 +6,10 @@ pub mod sql_types {
     pub struct ChannelPermission;
 
     #[derive(diesel::query_builder::QueryId, Clone, diesel::sql_types::SqlType)]
+    #[diesel(postgres_type(name = "resource_namespace_type"))]
+    pub struct ResourceNamespaceType;
+
+    #[derive(diesel::query_builder::QueryId, Clone, diesel::sql_types::SqlType)]
     #[diesel(postgres_type(name = "user_role"))]
     pub struct UserRole;
 }
@@ -40,8 +44,12 @@ diesel::table! {
 }
 
 diesel::table! {
-    resources (namespace, key) {
-        namespace -> Text,
+    use diesel::sql_types::*;
+    use super::sql_types::ResourceNamespaceType;
+
+    resources (namespace_type, namespace_id, key) {
+        namespace_type -> ResourceNamespaceType,
+        namespace_id -> Text,
         key -> Text,
         meta -> Jsonb,
         user_id -> Text,

@@ -9,12 +9,10 @@ use crate::types::DatabaseDomainType;
 use crate::types::chat::{Channel, ChannelPermission, Message};
 use crate::types::common::Timestamp;
 use crate::types::user::Notification;
+use crate::utils::generate_unique_id;
 use aura_rust::common::v1::ErrorCode;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, SelectableHelper};
 use diesel_async::{AsyncConnection, RunQueryDsl};
-use nanoid::nanoid;
-
-pub const ID_LENGTH: usize = 10;
 
 pub async fn create_channel(
     database: &mut DatabaseConnection,
@@ -64,7 +62,7 @@ pub async fn create_channel(
                     database,
                     user_id,
                     [Notification::Invite {
-                        notification_id: nanoid!(ID_LENGTH),
+                        notification_id: generate_unique_id(),
                         timestamp: Timestamp::now(),
                         channel_id: channel.channel_id.clone(),
                         invited_by: owner.clone(),
@@ -172,7 +170,7 @@ pub async fn invite(
                 &invited_user_id,
                 [Notification::Invite {
                     // TODO: reinforce so that the notification_id is unique
-                    notification_id: nanoid!(ID_LENGTH),
+                    notification_id: generate_unique_id(),
                     timestamp: Timestamp::now(),
                     channel_id,
                     invited_by: user_id,
@@ -233,7 +231,7 @@ pub async fn uninvite(
                 database,
                 &invited_user_id,
                 [Notification::Invite {
-                    notification_id: nanoid!(ID_LENGTH),
+                    notification_id: generate_unique_id(),
                     timestamp: Timestamp::now(),
                     channel_id,
                     invited_by: user_id,
@@ -367,16 +365,6 @@ pub async fn channel_exists(
         .is_some())
 }
 
-pub async fn build_channel_id(database: &mut DatabaseConnection) -> Result<String, Error> {
-    let mut id = nanoid::nanoid!(ID_LENGTH);
-
-    while channel_exists(database, &id).await? {
-        id = nanoid::nanoid!(ID_LENGTH);
-    }
-
-    Ok(id)
-}
-
 pub async fn send(database: &mut DatabaseConnection, message: Message) -> Result<Message, Error> {
     database
         .transaction(async |database| {
@@ -407,7 +395,7 @@ pub async fn send(database: &mut DatabaseConnection, message: Message) -> Result
                     database,
                     member,
                     [Notification::Message {
-                        notification_id: nanoid::nanoid!(),
+                        notification_id: generate_unique_id(),
                         timestamp: Timestamp::now(),
                         channel_id: channel.channel_id.clone(),
                         sender_id: message.user_id.clone(),
@@ -467,27 +455,4 @@ pub async fn get_msg(
         .optional()?;
 
     message.map(Message::from_db).transpose()
-}
-
-pub async fn msg_exists(
-    database: &mut DatabaseConnection,
-    message_id: &str,
-) -> Result<bool, Error> {
-    Ok(messages::table
-        .find(message_id)
-        .select(messages::message_id)
-        .first::<String>(database)
-        .await
-        .optional()?
-        .is_some())
-}
-
-pub async fn build_message_id(database: &mut DatabaseConnection) -> Result<String, Error> {
-    let mut id = nanoid::nanoid!(ID_LENGTH);
-
-    while msg_exists(database, &id).await? {
-        id = nanoid::nanoid!(ID_LENGTH);
-    }
-
-    Ok(id)
 }

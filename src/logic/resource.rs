@@ -1,13 +1,13 @@
+use crate::config;
 use crate::database::DatabaseConnection;
 use crate::database::resource as db;
+use crate::database::resource::ResourceNamespaceType;
 use crate::error::Error;
-use crate::logic::{chat, user};
+use crate::logic::chat;
 use crate::schema::resources;
 use crate::types::DatabaseDomainType;
-use crate::types::chat::ChannelPermission;
-use crate::types::resource::{ResourceDescriptor, ResourceId};
+use crate::types::resource::{ResourceDescriptor, ResourceId, ResourceNamespace};
 use crate::utils::RESOURCE_CHUNK_SIZE;
-use crate::{config, utils};
 use aura_rust::common::v1::ErrorCode;
 use diesel::{ExpressionMethods, SelectableHelper};
 use diesel::{OptionalExtension, QueryDsl};
@@ -18,12 +18,6 @@ use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio_util::io::ReaderStream;
 use tonic::codegen::tokio_stream::{Stream, StreamExt};
 
-/// Built-in namespace.
-pub const BUILTIN_NAMESPACE: &str = "aura";
-
-/// Built-in user icon key.
-pub const DEFAULT_ICON_KEY: &str = "default_icon.png";
-
 pub async fn create(
     database: &mut DatabaseConnection,
     desc: ResourceDescriptor,
@@ -32,15 +26,6 @@ pub async fn create(
         return Err(Error::new(
             ErrorCode::AlreadyExists,
             "Resource already exists",
-        ));
-    }
-
-    if !utils::is_valid_file_name(&desc.resource_id.namespace)
-        || !utils::is_valid_file_name(&desc.resource_id.key)
-    {
-        return Err(Error::new(
-            ErrorCode::InvalidFormat,
-            "Resource ID can only contain alphanumeric and '-', '_', '.' characters",
         ));
     }
 
@@ -58,8 +43,17 @@ pub async fn get(
     database: &mut DatabaseConnection,
     resource_id: &ResourceId,
 ) -> Result<Option<ResourceDescriptor>, Error> {
+    let namespace_type = ResourceNamespaceType::from(&resource_id.namespace);
+
+    let namespace_id = match &resource_id.namespace {
+        ResourceNamespace::Aura => "",
+        ResourceNamespace::UserIcon => "",
+        ResourceNamespace::Channel(id) => id.as_str(),
+    };
+
     let resource = resources::table
-        .filter(resources::namespace.eq(&resource_id.namespace))
+        .filter(resources::namespace_type.eq(namespace_type))
+        .filter(resources::namespace_id.eq(namespace_id))
         .filter(resources::key.eq(&resource_id.key))
         .select(db::ResourceDescriptor::as_select())
         .first::<db::ResourceDescriptor>(database)
@@ -73,10 +67,19 @@ pub async fn exists(
     database: &mut DatabaseConnection,
     resource_id: &ResourceId,
 ) -> Result<bool, Error> {
+    let namespace_type = ResourceNamespaceType::from(&resource_id.namespace);
+
+    let namespace_id = match &resource_id.namespace {
+        ResourceNamespace::Aura => "",
+        ResourceNamespace::UserIcon => "",
+        ResourceNamespace::Channel(id) => id.as_str(),
+    };
+
     Ok(resources::table
-        .filter(resources::namespace.eq(&resource_id.namespace))
+        .filter(resources::namespace_type.eq(namespace_type))
+        .filter(resources::namespace_id.eq(namespace_id))
         .filter(resources::key.eq(&resource_id.key))
-        .select(resources::namespace)
+        .select(resources::key)
         .first::<String>(database)
         .await
         .optional()?
@@ -88,46 +91,31 @@ pub async fn is_download_authorized(
     desc: &ResourceDescriptor,
     user: &str,
 ) -> Result<bool, Error> {
-    let mut authorized = false;
-    let user = user::get(database, user)
-        .await?
-        .ok_or(Error::new(ErrorCode::NotFound, "User not found"))?;
-
-    if from_builtin(&desc.resource_id).is_some() {
-        authorized = true;
-    } else if let Some(channel) = chat::get_channel(database, &desc.resource_id.namespace).await?
-        && channel.members.contains_key(&user.user_id)
-    {
-        authorized = true;
-    } else if is_user_avatar(&desc.resource_id, None) {
-        authorized = true;
-    }
-
-    Ok(authorized)
+    Ok(match &desc.resource_id.namespace {
+        ResourceNamespace::Aura => true,
+        ResourceNamespace::UserIcon => true,
+        ResourceNamespace::Channel(channel_id) => chat::get_channel(database, channel_id)
+            .await?
+            .ok_or(Error::not_found("Channel not found"))?
+            .members
+            .contains_key(user),
+    })
 }
 
 pub async fn is_upload_authorized(
     database: &mut DatabaseConnection,
     desc: &ResourceDescriptor,
-    user: &str,
+    user_id: &str,
 ) -> Result<bool, Error> {
-    let mut authorized = false;
-    let user = user::get(database, user)
-        .await?
-        .ok_or(Error::new(ErrorCode::NotFound, "User not found"))?;
-
-    if let Some(channel) = chat::get_channel(database, &desc.resource_id.namespace).await? {
-        let perm =
-            chat::get_channel_member_perm(database, &channel.channel_id, &user.user_id).await?;
-
-        authorized = perm == ChannelPermission::Manager || perm == ChannelPermission::ReadWrite;
-    } else if is_user_avatar(&desc.resource_id, Some(&user.user_id))
-        && desc.resource_id.key.ends_with(".png")
-    {
-        authorized = true;
-    }
-
-    Ok(authorized)
+    Ok(match &desc.resource_id.namespace {
+        ResourceNamespace::Aura => false,
+        ResourceNamespace::UserIcon => desc.resource_id.key == user_id,
+        ResourceNamespace::Channel(channel_id) => {
+            chat::get_channel_member_perm(database, channel_id, user_id)
+                .await?
+                .is_write_authorized()
+        }
+    })
 }
 
 pub async fn read(id: ResourceId) -> Result<impl Stream<Item = Result<Vec<u8>, Error>>, Error> {
@@ -190,34 +178,12 @@ pub async fn write(
     Ok(())
 }
 
-pub fn from_builtin(id: &ResourceId) -> Option<PathBuf> {
-    if id.namespace.as_str() != BUILTIN_NAMESPACE {
-        return None;
-    }
-
-    match id.key.as_str() {
-        DEFAULT_ICON_KEY => Some(PathBuf::from("aura/default_icon.png")),
-        _ => None,
-    }
-}
-
-pub fn is_user_avatar(id: &ResourceId, user_id: Option<&str>) -> bool {
-    if let Some(user_id) = user_id {
-        id.namespace.as_str() == format!("user.{user_id}") && id.key.as_str() == "avatar.png"
-    } else {
-        id.namespace.as_str().starts_with("user.") && id.key.as_str() == "avatar.png"
-    }
-}
-
-pub fn build_user_avatar_id(user_id: &str) -> ResourceId {
-    ResourceId {
-        namespace: format!("user.{user_id}"),
-        key: "avatar.png".to_string(),
-    }
-}
-
 fn build_path(id: &ResourceId) -> PathBuf {
     Path::new(&config::get().service.resource_dir)
-        .join(&id.namespace)
+        .join(match &id.namespace {
+            ResourceNamespace::Aura => "aura".to_string(),
+            ResourceNamespace::UserIcon => "user_icon".to_string(),
+            ResourceNamespace::Channel(id) => format!("channel.{id}"),
+        })
         .join(&id.key)
 }

@@ -4,14 +4,14 @@ use crate::logic::resource;
 use crate::state::ServerState;
 use crate::types::GrpcDomainType;
 use crate::types::common::Timestamp;
-use crate::types::resource::{ResourceDescriptor, ResourceId, ResourceMeta};
-use crate::utils::SafeStreaming;
+use crate::types::resource::{ResourceDescriptor, ResourceId, ResourceMeta, ResourceNamespace};
+use crate::utils::{SafeStreaming, generate_unique_id};
 use aura_rust::common::v1::ErrorCode;
 use aura_rust::resource::v1::resource_service_server::ResourceService;
 use aura_rust::resource::v1::upload_request::Payload;
 use aura_rust::resource::v1::{
     DownloadRequest, DownloadResponse, GetResourceMetaRequest, GetResourceMetaResponse,
-    UploadRequest, UploadResponse, download_response, get_resource_meta_response,
+    UploadRequest, UploadResponse, download_response, get_resource_meta_response, upload_response,
 };
 use tonic::codegen::BoxStream;
 use tonic::codegen::tokio_stream::StreamExt;
@@ -36,8 +36,12 @@ impl Service {
 
         let meta_req = stream.next_safe().await.ok_or(Error::invalid_format())??;
 
-        let resource_id =
-            ResourceId::from_grpc(meta_req.resource_id.ok_or(Error::invalid_format())?)?;
+        let resource_id = ResourceId {
+            namespace: ResourceNamespace::from_grpc(
+                meta_req.namespace.ok_or(Error::invalid_format())?,
+            )?,
+            key: generate_unique_id(),
+        };
 
         let mut meta =
             ResourceMeta::from_grpc(match meta_req.payload.ok_or(Error::invalid_format())? {
@@ -48,7 +52,7 @@ impl Service {
         meta.timestamp = Timestamp::now();
 
         let desc = ResourceDescriptor {
-            resource_id,
+            resource_id: resource_id.clone(),
             meta,
             user_id: user.user_id.clone(),
         };
@@ -80,7 +84,11 @@ impl Service {
 
         resource::write(desc.resource_id, stream).await?;
 
-        Ok(UploadResponse { error: None })
+        Ok(UploadResponse {
+            result: Some(upload_response::Result::ResourceId(
+                resource_id.into_grpc()?,
+            )),
+        })
     }
 
     async fn _download(
@@ -160,7 +168,7 @@ impl ResourceService for Service {
             ._upload(request)
             .await
             .unwrap_or_else(|err| UploadResponse {
-                error: Some(err.into()),
+                result: Some(upload_response::Result::Error(err.into())),
             });
 
         Ok(Response::new(resp))

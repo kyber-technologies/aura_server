@@ -1,5 +1,5 @@
-use crate::logic::resource;
 use crate::types::common::Timestamp;
+use crate::types::resource::{ResourceId, ResourceNamespace};
 use crate::types::user::{Notifications, User, UserRole};
 
 pub fn test_user(hash: bool) -> User {
@@ -14,7 +14,10 @@ pub fn test_user(hash: bool) -> User {
         },
         role: UserRole::User,
         created_at: Timestamp::now(),
-        icon: resource::build_user_avatar_id("user"),
+        icon: ResourceId {
+            namespace: ResourceNamespace::UserIcon,
+            key: "user".to_string(),
+        },
         notifications: Notifications(Vec::new()),
         channels: Vec::new(),
     }
@@ -32,7 +35,10 @@ pub fn moderator_user(hash: bool) -> User {
         },
         role: UserRole::Moderator,
         created_at: Timestamp::now(),
-        icon: resource::build_user_avatar_id("moderator"),
+        icon: ResourceId {
+            namespace: ResourceNamespace::UserIcon,
+            key: "moderator".to_string(),
+        },
         notifications: Notifications(Vec::new()),
         channels: Vec::new(),
     }
@@ -50,7 +56,10 @@ pub fn admin_user(hash: bool) -> User {
         },
         role: UserRole::Admin,
         created_at: Timestamp::now(),
-        icon: resource::build_user_avatar_id("admin"),
+        icon: ResourceId {
+            namespace: ResourceNamespace::UserIcon,
+            key: "admin".to_string(),
+        },
         notifications: Notifications(Vec::new()),
         channels: Vec::new(),
     }

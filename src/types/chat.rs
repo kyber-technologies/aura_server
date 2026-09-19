@@ -193,6 +193,15 @@ pub enum ChannelPermission {
     Manager,
 }
 
+impl ChannelPermission {
+    pub fn is_write_authorized(&self) -> bool {
+        matches!(
+            self,
+            ChannelPermission::ReadWrite | ChannelPermission::Manager
+        )
+    }
+}
+
 impl GrpcDomainType for ChannelPermission {
     type Type = grpc::ChannelPermission;
 

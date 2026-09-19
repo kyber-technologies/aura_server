@@ -16,9 +16,8 @@ pub const COMPRESSION: CompressionEncoding = CompressionEncoding::Gzip;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub fn is_valid_file_name(s: &str) -> bool {
-    s.chars()
-        .all(|c| c.is_alphanumeric() || c == '-' || c == '.' || c == '_')
+pub fn is_valid_ident(i: &str) -> bool {
+    i.chars().all(|c| c.is_alphanumeric() || c == '_')
 }
 
 pub struct SafeStreaming<T>(Streaming<T>);
@@ -56,4 +55,12 @@ impl<T> DerefMut for SafeStreaming<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
+}
+
+/// Generated a new unique ID with length 16.
+///
+/// If 1000 Unique IDs would be generated every second,
+/// it would take ~1000 years to have a 1% chance of a collision.
+pub fn generate_unique_id() -> String {
+    nanoid::format(nanoid::rngs::default, &nanoid::alphabet::SAFE, 16)
 }

@@ -5,6 +5,7 @@ use crate::state::ServerState;
 use crate::types::chat::{Channel, ChannelPermission, Content, Message};
 use crate::types::common::Timestamp;
 use crate::types::{FastMap, GrpcDomainType};
+use crate::utils::generate_unique_id;
 use aura_rust::chat::v1::chat_service_server::ChatService;
 use aura_rust::chat::v1::{
     CreateChannelRequest, CreateChannelResponse, DeleteChannelRequest, DeleteChannelResponse,
@@ -32,7 +33,7 @@ impl Service {
 
         let (user, _) = auth::verify(&mut database, &request).await?;
         let channel_args = request.into_inner();
-        let channel_id = chat::build_channel_id(&mut database).await?;
+        let channel_id = generate_unique_id();
 
         let channel = chat::create_channel(
             &mut database,
@@ -170,7 +171,7 @@ impl Service {
             chat::get_channel_member_perm(&mut database, &args.channel_id, &user.user_id).await?;
 
         if perm == ChannelPermission::ReadWrite || perm == ChannelPermission::Manager {
-            let id = chat::build_message_id(&mut database).await?;
+            let id = generate_unique_id();
             let msg = chat::send(
                 &mut database,
                 Message {

@@ -3,6 +3,7 @@ use crate::logic::chat;
 use crate::state::ServerState;
 use crate::types::chat::{Channel, ChannelPermission, Content, Message};
 use crate::types::common::Timestamp;
+use crate::utils::generate_unique_id;
 use chrono::DateTime;
 use no_pico_args::Arguments;
 use std::pin::Pin;
@@ -21,7 +22,7 @@ pub const CREATE: Command = Command {
 
             let mut database = state.database().await?;
 
-            let channel_id = chat::build_channel_id(&mut database).await?;
+            let channel_id = generate_unique_id();
 
             let channel = chat::create_channel(
                 &mut database,
@@ -171,7 +172,7 @@ pub const SEND: Command = Command {
 
             let mut database = state.database().await?;
 
-            let message_id = chat::build_message_id(&mut database).await?;
+            let message_id = generate_unique_id();
 
             chat::send(
                 &mut database,

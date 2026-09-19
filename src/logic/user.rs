@@ -3,11 +3,10 @@ use crate::database::channel as ch_db;
 use crate::database::user as db;
 use crate::error::Error;
 use crate::logic::resource;
-use crate::logic::resource::{BUILTIN_NAMESPACE, DEFAULT_ICON_KEY};
 use crate::schema::{channel_members, channels, user_blocks, users};
 use crate::types::DatabaseDomainType;
 use crate::types::common::Timestamp;
-use crate::types::resource::{ResourceDescriptor, ResourceId, ResourceMeta};
+use crate::types::resource::{ResourceDescriptor, ResourceId, ResourceMeta, ResourceNamespace};
 use crate::types::user::{Notification, Notifications, User, UserProfile, UserRole};
 use crate::{auth, config, utils};
 use aura_rust::common::v1::ErrorCode;
@@ -19,7 +18,7 @@ use diesel_async::RunQueryDsl;
 use tonic::codegen::tokio_stream::StreamExt;
 
 pub async fn create(database: &mut DatabaseConnection, user: User) -> Result<(), Error> {
-    if !utils::is_valid_file_name(&user.user_id) {
+    if !utils::is_valid_ident(&user.user_id) {
         return Err(Error::new(ErrorCode::InvalidFormat, "Invalid user ID"));
     }
 
@@ -47,11 +46,7 @@ pub async fn create(database: &mut DatabaseConnection, user: User) -> Result<(),
             err => err.into(),
         })?;
 
-    let mut icon_stream = resource::read(ResourceId {
-        key: DEFAULT_ICON_KEY.to_string(),
-        namespace: BUILTIN_NAMESPACE.to_string(),
-    })
-    .await?;
+    let mut icon_stream = resource::read(ResourceId::default_user_icon()).await?;
 
     let mut chunks = Vec::new();
     let mut length = 0;
@@ -62,7 +57,10 @@ pub async fn create(database: &mut DatabaseConnection, user: User) -> Result<(),
         chunks.push(Ok(chunk));
     }
 
-    let icon_id = resource::build_user_avatar_id(&user.user_id);
+    let icon_id = ResourceId {
+        namespace: ResourceNamespace::UserIcon,
+        key: user.user_id.clone(),
+    };
 
     resource::create(
         database,
@@ -316,7 +314,10 @@ pub async fn create_admin(database: &mut DatabaseConnection) -> Result<(), Error
                 password: auth::hash("admin".to_string()).expect("Failed to hash password"),
                 role: UserRole::Admin,
                 created_at: Timestamp::now(),
-                icon: resource::build_user_avatar_id("admin"),
+                icon: ResourceId {
+                    namespace: ResourceNamespace::UserIcon,
+                    key: "admin".to_string(),
+                },
                 notifications: Notifications(Vec::new()),
                 channels: Vec::new(),
             },

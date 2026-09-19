@@ -25,6 +25,10 @@ impl Error {
         Self::new(ErrorCode::Internal, message)
     }
 
+    pub fn not_found(message: impl ToSmolStr) -> Self {
+        Self::new(ErrorCode::NotFound, message)
+    }
+
     pub fn code_name(&self) -> &'static str {
         match self.code {
             ErrorCode::Unspecified => "UNSPECIFIED",
