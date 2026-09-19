@@ -148,6 +148,7 @@ impl DatabaseDomainType for ResourceDescriptor {
 pub struct ResourceMeta {
     pub size: u32,
     pub timestamp: Timestamp,
+    pub name: String,
     pub metadata: FastMap<String, String>,
 }
 
@@ -160,6 +161,7 @@ impl GrpcDomainType for ResourceMeta {
         Ok(Self {
             size: value.size as u32,
             timestamp: Timestamp::from_grpc(value.timestamp.ok_or(Error::invalid_format())?)?,
+            name: value.name,
             metadata: value.metadata.into_iter().collect(),
         })
     }
@@ -168,6 +170,7 @@ impl GrpcDomainType for ResourceMeta {
         Ok(Self::Type {
             size: self.size as i32,
             timestamp: Some(self.timestamp.into_grpc()?),
+            name: self.name,
             metadata: self.metadata.into_iter().collect(),
         })
     }

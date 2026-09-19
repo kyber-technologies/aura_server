@@ -68,6 +68,7 @@ pub async fn create(database: &mut DatabaseConnection, user: User) -> Result<(),
             resource_id: icon_id.clone(),
             meta: ResourceMeta {
                 size: length as u32,
+                name: "icon".to_string(),
                 timestamp: Timestamp::now(),
                 metadata: Default::default(),
             },
