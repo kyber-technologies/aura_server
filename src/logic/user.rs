@@ -19,7 +19,7 @@ use tonic::codegen::tokio_stream::StreamExt;
 
 pub async fn create(database: &mut DatabaseConnection, user: User) -> Result<(), Error> {
     if !utils::is_valid_ident(&user.user_id) {
-        return Err(Error::new(ErrorCode::InvalidFormat, "Invalid user ID"));
+        return Err(Error::invalid_format("Invalid User ID"));
     }
 
     let data = user.clone().into_db()?;
@@ -33,15 +33,11 @@ pub async fn create(database: &mut DatabaseConnection, user: User) -> Result<(),
                 diesel::result::DatabaseErrorKind::UniqueViolation,
                 info,
             ) => match info.constraint_name() {
-                Some("users_email_unique") => {
-                    Error::new(ErrorCode::AlreadyExists, "Email already registered")
-                }
+                Some("users_email_unique") => Error::already_exists("Email already registered"),
 
-                Some("users_user_id_unique") => {
-                    Error::new(ErrorCode::AlreadyExists, "User ID already exists")
-                }
+                Some("users_user_id_unique") => Error::already_exists("User ID already exists"),
 
-                _ => Error::new(ErrorCode::Internal, "Database unique constraint violation"),
+                _ => Error::already_exists("Database unique constraint violation"),
             },
             err => err.into(),
         })?;
@@ -201,7 +197,7 @@ pub async fn block(
     block: bool,
 ) -> Result<(), Error> {
     if !exists(database, block_user_id).await? {
-        return Err(Error::new(ErrorCode::NotFound, "User not found"));
+        return Err(Error::not_found("User not found"));
     }
 
     if block {
@@ -234,7 +230,7 @@ pub async fn is_blocked_by(
     block_user_id: &str,
 ) -> Result<bool, Error> {
     if !exists(database, block_user_id).await? {
-        return Err(Error::new(ErrorCode::NotFound, "User not found"));
+        return Err(Error::not_found("User not found"));
     }
 
     Ok(user_blocks::table
@@ -261,7 +257,7 @@ pub async fn push_notifications(
         .first::<serde_json::Value>(database)
         .await
         .optional()?
-        .ok_or(Error::new(ErrorCode::NotFound, "User not found"))?;
+        .ok_or(Error::not_found("User not found"))?;
 
     let mut notifications = Notifications::from_db(existing)?;
 

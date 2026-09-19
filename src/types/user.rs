@@ -45,8 +45,16 @@ impl GrpcDomainType for User {
             email: value.email,
             password: value.password,
             role: UserRole::from_grpc(role)?,
-            created_at: Timestamp::from_grpc(value.created_at.ok_or(Error::invalid_format())?)?,
-            icon: ResourceId::from_grpc(value.icon.ok_or(Error::invalid_format())?)?,
+            created_at: Timestamp::from_grpc(
+                value
+                    .created_at
+                    .ok_or(Error::invalid_format("Created at not provided"))?,
+            )?,
+            icon: ResourceId::from_grpc(
+                value
+                    .icon
+                    .ok_or(Error::invalid_format("Icon not provided"))?,
+            )?,
             notifications: Notifications::from_grpc(value.notifications)?,
             channels: value
                 .channels
@@ -142,8 +150,16 @@ impl GrpcDomainType for UserProfile {
             user_id: value.user_id,
             username: value.username,
             role: UserRole::from_grpc(role)?,
-            icon: ResourceId::from_grpc(value.icon.ok_or(Error::invalid_format())?)?,
-            created_at: Timestamp::from_grpc(value.created_at.ok_or(Error::invalid_format())?)?,
+            icon: ResourceId::from_grpc(
+                value
+                    .icon
+                    .ok_or(Error::invalid_format("Icon not provided"))?,
+            )?,
+            created_at: Timestamp::from_grpc(
+                value
+                    .created_at
+                    .ok_or(Error::invalid_format("Created at not provided"))?,
+            )?,
         })
     }
 
@@ -214,20 +230,34 @@ impl GrpcDomainType for Notification {
     type Type = grpc::Notification;
 
     fn from_grpc(value: Self::Type) -> Result<Self, Error> {
-        match value.notification.ok_or(Error::invalid_format())? {
+        match value
+            .notification
+            .ok_or(Error::invalid_format("Notification not provided"))?
+        {
             grpc::notification::Notification::Invite(not) => Ok(Self::Invite {
                 notification_id: value.notification_id,
-                timestamp: Timestamp::from_grpc(value.timestamp.ok_or(Error::invalid_format())?)?,
+                timestamp: Timestamp::from_grpc(
+                    value
+                        .timestamp
+                        .ok_or(Error::invalid_format("Timestamp not provided"))?,
+                )?,
                 channel_id: not.channel_id,
                 invited_by: not.invited_by,
                 uninvited: not.uninvited,
             }),
             grpc::notification::Notification::Message(not) => Ok(Self::Message {
                 notification_id: value.notification_id,
-                timestamp: Timestamp::from_grpc(value.timestamp.ok_or(Error::invalid_format())?)?,
+                timestamp: Timestamp::from_grpc(
+                    value
+                        .timestamp
+                        .ok_or(Error::invalid_format("Timestamp not provided"))?,
+                )?,
                 channel_id: not.channel_id,
                 sender_id: not.sender_id,
-                message: Message::from_grpc(not.message.ok_or(Error::invalid_format())?)?,
+                message: Message::from_grpc(
+                    not.message
+                        .ok_or(Error::invalid_format("Message not provided"))?,
+                )?,
             }),
         }
     }

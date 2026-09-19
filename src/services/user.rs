@@ -37,7 +37,7 @@ impl Service {
             error: if exists {
                 None
             } else {
-                Some(Error::new(ErrorCode::NotFound, "User not found").into())
+                Some(Error::not_found("User not found").into())
             },
         })
     }
@@ -146,12 +146,7 @@ impl Service {
             .password
             .map(auth::hash)
             .unwrap_or(Ok(user.password))
-            .map_err(|err| {
-                Error::new(
-                    ErrorCode::Internal,
-                    format!("Hashing password failed: {err}"),
-                )
-            })?;
+            .map_err(|err| Error::internal(format!("Hashing password failed: {err}")))?;
 
         user::update(&mut database, user).await?;
 
@@ -166,7 +161,7 @@ impl Service {
 
         let user = user::get(&mut database, &user)
             .await?
-            .ok_or(Error::new(ErrorCode::NotFound, "User not found"))?;
+            .ok_or(Error::not_found("User not found"))?;
 
         Ok(GetUserResponse {
             result: Some(get_user_response::Result::User(

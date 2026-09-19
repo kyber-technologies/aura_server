@@ -13,7 +13,6 @@ use aura_rust::chat::v1::{
     ReadMessagesRequest, ReadMessagesResponse, SendMessageRequest, SendMessageResponse,
     SetUserPermRequest, SetUserPermResponse, create_channel_response, send_message_response,
 };
-use aura_rust::common::v1::ErrorCode;
 use tonic::{Request, Response, Status};
 
 pub struct Service {
@@ -48,8 +47,9 @@ impl Service {
                         Ok((
                             user,
                             ChannelPermission::from_grpc(
-                                aura_rust::chat::v1::ChannelPermission::try_from(perm)
-                                    .map_err(|_| Error::invalid_format())?,
+                                aura_rust::chat::v1::ChannelPermission::try_from(perm).map_err(
+                                    |_| Error::invalid_format("Invalid channel permission"),
+                                )?,
                             )?,
                         ))
                     })
@@ -133,17 +133,20 @@ impl Service {
 
         let channel = chat::get_channel(&mut database, &args.channel_id)
             .await?
-            .ok_or(Error::new(ErrorCode::NotFound, "Channel not found"))?;
+            .ok_or(Error::not_found("Channel not found"))?;
 
         if !channel.members.contains_key(&user.user_id) {
-            return Err(Error::new(ErrorCode::Unauthorized, "User not in channel"));
+            return Err(Error::restricted("User not in channel"));
         }
 
         let messages = chat::read_messages(
             &mut database,
             &args.channel_id,
             args.limit,
-            Timestamp::from_grpc(args.start_time.ok_or(Error::invalid_format())?)?,
+            Timestamp::from_grpc(
+                args.start_time
+                    .ok_or(Error::invalid_format("No start time provided"))?,
+            )?,
         )
         .await?;
 
@@ -165,7 +168,9 @@ impl Service {
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
 
-        let content = args.content.ok_or(Error::invalid_format())?;
+        let content = args
+            .content
+            .ok_or(Error::invalid_format("No content provided"))?;
 
         let perm =
             chat::get_channel_member_perm(&mut database, &args.channel_id, &user.user_id).await?;
@@ -188,10 +193,7 @@ impl Service {
                 result: Some(send_message_response::Result::Message(msg.into_grpc()?)),
             })
         } else {
-            Err(Error::new(
-                ErrorCode::Unauthorized,
-                "User has no permission to send messages",
-            ))
+            Err(Error::restricted("User has no permission to send messages"))
         }
     }
 
@@ -204,7 +206,7 @@ impl Service {
         let (user, _) = auth::verify(&mut database, &request).await?;
         let message = chat::get_msg(&mut database, &request.into_inner().message_id)
             .await?
-            .ok_or(Error::new(ErrorCode::NotFound, "Message not found"))?;
+            .ok_or(Error::not_found("Message not found"))?;
 
         let perm = chat::get_channel_member_perm(&mut database, &message.channel_id, &user.user_id)
             .await?;
@@ -216,8 +218,7 @@ impl Service {
 
             Ok(DeleteMessageResponse { error: None })
         } else {
-            Err(Error::new(
-                ErrorCode::Unauthorized,
+            Err(Error::restricted(
                 "User has no permission to delete this message",
             ))
         }

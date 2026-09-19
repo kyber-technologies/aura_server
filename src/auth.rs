@@ -6,7 +6,6 @@ use crate::types::common::Auth;
 use crate::types::user::User;
 use argon2::password_hash::phc::Salt;
 use argon2::{Argon2, Params, PasswordHasher, PasswordVerifier, Version};
-use aura_rust::common::v1::ErrorCode;
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use std::sync::OnceLock;
 use std::time::SystemTime;
@@ -58,18 +57,18 @@ pub async fn verify<T>(
             jsonwebtoken::decode::<Auth>(token.as_bytes(), key, &Validation::new(Algorithm::EdDSA))
                 .map_err(|err| match err.kind() {
                     jsonwebtoken::errors::ErrorKind::ExpiredSignature => {
-                        Error::new(ErrorCode::Unauthorized, "Token expired")
+                        Error::unauthorized("Token expired")
                     }
 
-                    _ => Error::new(ErrorCode::Unauthorized, "Invalid token"),
+                    _ => Error::unauthorized("Invalid token"),
                 })?;
 
         user::get(database, &claim.claims.user_id)
             .await?
             .map(|user| (user, token.to_string()))
-            .ok_or(Error::new(ErrorCode::NotFound, "User not found"))
+            .ok_or(Error::not_found("User not found"))
     } else {
-        Err(Error::new(ErrorCode::Unauthorized, "Missing token"))
+        Err(Error::unauthorized("Missing token"))
     }
 }
 
@@ -94,12 +93,12 @@ pub async fn auth(
         if verify_hash(password, user.password.clone()) {
             jsonwebtoken::encode(&Header::new(Algorithm::EdDSA), &auth, key)
                 .map(|token| (token, user))
-                .map_err(|_| Error::new(ErrorCode::Internal, "Failed to encode token"))
+                .map_err(|_| Error::internal("Failed to encode token"))
         } else {
-            Err(Error::new(ErrorCode::Unauthorized, "Invalid credentials"))
+            Err(Error::unauthorized("Invalid credentials"))
         }
     } else {
-        Err(Error::new(ErrorCode::Unauthorized, "Invalid credentials"))
+        Err(Error::unauthorized("Invalid credentials"))
     }
 }
 

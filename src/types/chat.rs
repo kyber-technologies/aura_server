@@ -33,7 +33,7 @@ impl GrpcDomainType for Channel {
                         k,
                         ChannelPermission::from_grpc(
                             grpc::ChannelPermission::try_from(v)
-                                .map_err(|_| Error::invalid_format())?,
+                                .map_err(|_| Error::invalid_format("Invalid channel permission"))?,
                         )?,
                     ))
                 })
@@ -110,8 +110,16 @@ impl GrpcDomainType for Message {
             message_id: value.message_id,
             channel_id: value.channel_id,
             user_id: value.user_id,
-            content: Content::from_grpc(value.content.ok_or(Error::invalid_format())?)?,
-            created_at: Timestamp::from_grpc(value.created_at.ok_or(Error::invalid_format())?)?,
+            content: Content::from_grpc(
+                value
+                    .content
+                    .ok_or(Error::invalid_format("Content not provided"))?,
+            )?,
+            created_at: Timestamp::from_grpc(
+                value
+                    .created_at
+                    .ok_or(Error::invalid_format("Created at not provided"))?,
+            )?,
         })
     }
 
@@ -160,12 +168,17 @@ impl GrpcDomainType for Content {
     type Type = grpc::Content;
 
     fn from_grpc(value: Self::Type) -> Result<Self, Error> {
-        Ok(match value.content.ok_or(Error::invalid_format())? {
-            grpc::content::Content::Text(text) => Content::Text(text),
-            grpc::content::Content::Resource(resource) => {
-                Content::Resource(ResourceId::from_grpc(resource)?)
-            }
-        })
+        Ok(
+            match value
+                .content
+                .ok_or(Error::invalid_format("Content not provided"))?
+            {
+                grpc::content::Content::Text(text) => Content::Text(text),
+                grpc::content::Content::Resource(resource) => {
+                    Content::Resource(ResourceId::from_grpc(resource)?)
+                }
+            },
+        )
     }
 
     fn into_grpc(self) -> Result<Self::Type, Error> {

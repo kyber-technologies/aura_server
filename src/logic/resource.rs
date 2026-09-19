@@ -8,7 +8,6 @@ use crate::schema::resources;
 use crate::types::DatabaseDomainType;
 use crate::types::resource::{ResourceDescriptor, ResourceId, ResourceNamespace};
 use crate::utils::RESOURCE_CHUNK_SIZE;
-use aura_rust::common::v1::ErrorCode;
 use diesel::{ExpressionMethods, SelectableHelper};
 use diesel::{OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
@@ -23,10 +22,7 @@ pub async fn create(
     desc: ResourceDescriptor,
 ) -> Result<ResourceDescriptor, Error> {
     if exists(database, &desc.resource_id).await? {
-        return Err(Error::new(
-            ErrorCode::AlreadyExists,
-            "Resource already exists",
-        ));
+        return Err(Error::already_exists("Resource already exists"));
     }
 
     let data = desc.clone().into_db()?;
@@ -130,13 +126,13 @@ pub async fn read(id: ResourceId) -> Result<impl Stream<Item = Result<Vec<u8>, E
         .await
         .map_err(|e| {
             tracing::error!("Failed opening read file '{path:?}': {e}");
-            Error::new(ErrorCode::Internal, "Failed to read resource")
+            Error::internal("Failed to read resource")
         })?;
 
     let stream = ReaderStream::with_capacity(file, RESOURCE_CHUNK_SIZE).map(|res| {
         res.map_err(|err| {
             tracing::error!("Failed reading file: {err}");
-            Error::new(ErrorCode::Internal, "Failed to read resource")
+            Error::internal("Failed to read resource")
         })
         .map(|by| by.to_vec())
     });
@@ -156,7 +152,7 @@ pub async fn write(
 
     let file = fs::File::create(path).await.map_err(|e| {
         tracing::error!("Failed opening write file: {e}");
-        Error::new(ErrorCode::Internal, "Failed to write resource")
+        Error::internal("Failed to write resource")
     })?;
 
     tokio::pin!(stream);
@@ -166,13 +162,13 @@ pub async fn write(
     while let Some(data) = stream.next().await {
         buf.write(&data?).await.map_err(|e| {
             tracing::error!("Failed writing file: {e}");
-            Error::new(ErrorCode::Internal, "Failed to write resource")
+            Error::internal("Failed to write resource")
         })?;
     }
 
     buf.flush().await.map_err(|e| {
         tracing::error!("Failed flushing file: {e}");
-        Error::new(ErrorCode::Internal, "Failed to write resource")
+        Error::internal("Failed to write resource")
     })?;
 
     Ok(())

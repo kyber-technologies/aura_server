@@ -1,7 +1,6 @@
 use crate::config;
 use crate::error::Error;
 use crate::types::FastDashMap;
-use aura_rust::common::v1::ErrorCode;
 use lettre::message::header::ContentType;
 use lettre::message::{Mailbox, MessageBuilder};
 use lettre::transport::smtp::authentication::Credentials;
@@ -59,8 +58,8 @@ impl EmailRegister {
             .as_secs()
             + config::get().email.exp;
 
-        let addr = Address::from_str(&email)
-            .map_err(|_| Error::new(ErrorCode::InvalidFormat, "Invalid email format"))?;
+        let addr =
+            Address::from_str(&email).map_err(|_| Error::invalid_format("Invalid email format"))?;
 
         let msg = MessageBuilder::new()
             .to(Mailbox::new(None, addr))
@@ -84,10 +83,10 @@ impl EmailRegister {
     pub fn verify_email(&self, email: &String, token: String) -> Result<(), Error> {
         let entry_token = self
             .get_email_token(email)
-            .ok_or(Error::new(ErrorCode::NotFound, "E-Mail not found"))?;
+            .ok_or(Error::not_found("E-Mail not found"))?;
 
         if token != entry_token {
-            return Err(Error::new(ErrorCode::Unauthorized, "Invalid token"));
+            return Err(Error::unauthorized("Invalid token"));
         }
 
         self.register.remove(email);

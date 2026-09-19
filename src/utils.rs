@@ -1,5 +1,4 @@
 use crate::error::Error;
-use aura_rust::common::v1::ErrorCode;
 use std::ops::{Deref, DerefMut};
 use tonic::Streaming;
 use tonic::codec::CompressionEncoding;
@@ -32,14 +31,10 @@ impl<T> SafeStreaming<T> {
     }
 
     pub async fn next_safe(&mut self) -> Option<Result<T, Error>> {
-        self.0.next().await.map(|v| {
-            v.map_err(|err| {
-                Error::new(
-                    ErrorCode::Internal,
-                    format!("Got invalid stream item: {err}"),
-                )
-            })
-        })
+        self.0
+            .next()
+            .await
+            .map(|v| v.map_err(|err| Error::internal(format!("Got invalid stream item: {err}"))))
     }
 }
 

@@ -33,7 +33,9 @@ impl GrpcDomainType for ResourceId {
     fn from_grpc(value: Self::Type) -> Result<Self, Error> {
         Ok(Self {
             namespace: ResourceNamespace::from_grpc(
-                value.namespace.ok_or(Error::invalid_format())?,
+                value
+                    .namespace
+                    .ok_or(Error::invalid_format("Namespace not provided"))?,
             )?,
             key: value.key,
         })
@@ -70,7 +72,10 @@ impl GrpcDomainType for ResourceNamespace {
     type Type = grpc::ResourceNamespace;
 
     fn from_grpc(value: Self::Type) -> Result<Self, Error> {
-        match value.namespace.ok_or(Error::invalid_format())? {
+        match value
+            .namespace
+            .ok_or(Error::invalid_format("Namespace not provided"))?
+        {
             grpc::resource_namespace::Namespace::Aura(()) => Ok(Self::Aura),
             grpc::resource_namespace::Namespace::UserIcon(()) => Ok(Self::UserIcon),
             grpc::resource_namespace::Namespace::Channel(id) => Ok(Self::Channel(id)),
@@ -160,7 +165,11 @@ impl GrpcDomainType for ResourceMeta {
     fn from_grpc(value: Self::Type) -> Result<Self, Error> {
         Ok(Self {
             size: value.size as u32,
-            timestamp: Timestamp::from_grpc(value.timestamp.ok_or(Error::invalid_format())?)?,
+            timestamp: Timestamp::from_grpc(
+                value
+                    .timestamp
+                    .ok_or(Error::invalid_format("Timestamp not provided"))?,
+            )?,
             name: value.name,
             metadata: value.metadata.into_iter().collect(),
         })

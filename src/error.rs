@@ -10,23 +10,46 @@ pub struct Error {
 }
 
 impl Error {
-    pub fn new(code: ErrorCode, message: impl ToSmolStr) -> Self {
+    pub fn internal(message: impl ToSmolStr) -> Self {
         Self {
-            code,
+            code: ErrorCode::Internal,
             message: message.to_smolstr(),
         }
     }
 
-    pub fn invalid_format() -> Self {
-        ErrorCode::InvalidFormat.into()
-    }
-
-    pub fn internal(message: impl ToSmolStr) -> Self {
-        Self::new(ErrorCode::Internal, message)
+    pub fn unauthorized(message: impl ToSmolStr) -> Self {
+        Self {
+            code: ErrorCode::Unauthorized,
+            message: message.to_smolstr(),
+        }
     }
 
     pub fn not_found(message: impl ToSmolStr) -> Self {
-        Self::new(ErrorCode::NotFound, message)
+        Self {
+            code: ErrorCode::NotFound,
+            message: message.to_smolstr(),
+        }
+    }
+
+    pub fn already_exists(message: impl ToSmolStr) -> Self {
+        Self {
+            code: ErrorCode::AlreadyExists,
+            message: message.to_smolstr(),
+        }
+    }
+
+    pub fn invalid_format(message: impl ToSmolStr) -> Self {
+        Self {
+            code: ErrorCode::InvalidFormat,
+            message: message.to_smolstr(),
+        }
+    }
+
+    pub fn restricted(message: impl ToSmolStr) -> Self {
+        Self {
+            code: ErrorCode::Restricted,
+            message: message.to_smolstr(),
+        }
     }
 
     pub fn code_name(&self) -> &'static str {
@@ -52,9 +75,9 @@ impl std::error::Error for Error {}
 
 impl From<ErrorCode> for Error {
     fn from(value: ErrorCode) -> Self {
-        Self::new(
-            value,
-            SmolStr::new_static(match value {
+        Self {
+            code: value,
+            message: SmolStr::new_static(match value {
                 ErrorCode::Unspecified => "An unspecified error happened. Please report this!",
                 ErrorCode::Internal => "An internal error happened. Please report this!",
                 ErrorCode::Unauthorized => "You are not authorized to do this.",
@@ -65,13 +88,16 @@ impl From<ErrorCode> for Error {
                 }
                 ErrorCode::Restricted => "You are not permitted to do that.",
             }),
-        )
+        }
     }
 }
 
 impl From<aura_rust::common::v1::Error> for Error {
     fn from(value: aura_rust::common::v1::Error) -> Self {
-        Self::new(value.code(), value.message)
+        Self {
+            code: value.code(),
+            message: value.message.to_smolstr(),
+        }
     }
 }
 
@@ -86,21 +112,18 @@ impl From<Error> for aura_rust::common::v1::Error {
 
 impl From<PoolError> for Error {
     fn from(value: PoolError) -> Self {
-        Self::new(
-            ErrorCode::Internal,
-            format!("Database Connection Error: {value}"),
-        )
+        Self::internal(format!("Database Connection Error: {value}"))
     }
 }
 
 impl From<diesel::result::Error> for Error {
     fn from(value: diesel::result::Error) -> Self {
-        Self::new(ErrorCode::Internal, format!("Database Error: {value}"))
+        Self::internal(format!("Database Error: {value}"))
     }
 }
 
 impl From<serde_json::Error> for Error {
     fn from(value: serde_json::Error) -> Self {
-        Self::new(ErrorCode::InvalidFormat, format!("JSON Error: {value}"))
+        Self::invalid_format(format!("JSON Error: {value}"))
     }
 }

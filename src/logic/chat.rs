@@ -10,7 +10,6 @@ use crate::types::chat::{Channel, ChannelPermission, Message};
 use crate::types::common::Timestamp;
 use crate::types::user::Notification;
 use crate::utils::generate_unique_id;
-use aura_rust::common::v1::ErrorCode;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, SelectableHelper};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 
@@ -83,14 +82,13 @@ pub async fn delete_channel(
     user_id: String,
 ) -> Result<(), Error> {
     if !channel_exists(database, &channel_id).await? {
-        return Err(Error::new(ErrorCode::NotFound, "Channel not found"));
+        return Err(Error::not_found("Channel not found"));
     }
 
     let permission = get_channel_member_perm(database, &channel_id, &user_id).await?;
 
     if permission != ChannelPermission::Manager {
-        return Err(Error::new(
-            ErrorCode::Restricted,
+        return Err(Error::restricted(
             "Only channel managers can delete a channel",
         ));
     }
@@ -100,7 +98,7 @@ pub async fn delete_channel(
         .await?;
 
     if deleted == 0 {
-        return Err(Error::new(ErrorCode::NotFound, "Channel not found"));
+        return Err(Error::not_found("Channel not found"));
     }
 
     Ok(())
@@ -115,20 +113,17 @@ pub async fn invite(
     database
         .transaction(async |database| {
             if !channel_exists(database, &channel_id).await? {
-                return Err(Error::new(ErrorCode::NotFound, "Channel not found"));
+                return Err(Error::not_found("Channel not found"));
             }
 
             let permission = get_channel_member_perm(database, &channel_id, &user_id).await?;
 
             if permission != ChannelPermission::Manager {
-                return Err(Error::new(
-                    ErrorCode::Restricted,
-                    "Only channel managers can invite users",
-                ));
+                return Err(Error::restricted("Only channel managers can invite users"));
             }
 
             if !user::exists(database, &invited_user_id).await? {
-                return Err(Error::new(ErrorCode::NotFound, "User not found"));
+                return Err(Error::not_found("User not found"));
             }
 
             let already_member = channel_members::table
@@ -141,10 +136,7 @@ pub async fn invite(
                 .is_some();
 
             if already_member {
-                return Err(Error::new(
-                    ErrorCode::AlreadyExists,
-                    "User is already in channel",
-                ));
+                return Err(Error::already_exists("User is already in channel"));
             }
 
             let member = ch_db::ChannelMember {
@@ -161,7 +153,7 @@ pub async fn invite(
                     diesel::result::Error::DatabaseError(
                         diesel::result::DatabaseErrorKind::UniqueViolation,
                         _,
-                    ) => Error::new(ErrorCode::AlreadyExists, "User is already in channel"),
+                    ) => Error::already_exists("User is already in channel"),
                     err => err.into(),
                 })?;
 
@@ -169,7 +161,6 @@ pub async fn invite(
                 database,
                 &invited_user_id,
                 [Notification::Invite {
-                    // TODO: reinforce so that the notification_id is unique
                     notification_id: generate_unique_id(),
                     timestamp: Timestamp::now(),
                     channel_id,
@@ -193,14 +184,13 @@ pub async fn uninvite(
     database
         .transaction(async |database| {
             if !channel_exists(database, &channel_id).await? {
-                return Err(Error::new(ErrorCode::NotFound, "Channel not found"));
+                return Err(Error::not_found("Channel not found"));
             }
 
             let permission = get_channel_member_perm(database, &channel_id, &user_id).await?;
 
             if permission != ChannelPermission::Manager {
-                return Err(Error::new(
-                    ErrorCode::Restricted,
+                return Err(Error::restricted(
                     "Only channel managers can uninvite users",
                 ));
             }
@@ -209,10 +199,7 @@ pub async fn uninvite(
                 get_channel_member_perm(database, &channel_id, &invited_user_id).await?;
 
             if invited_user_permission == ChannelPermission::Manager {
-                return Err(Error::new(
-                    ErrorCode::Restricted,
-                    "Channel managers cannot be uninvited",
-                ));
+                return Err(Error::restricted("Channel managers cannot be uninvited"));
             }
 
             let deleted = diesel::delete(
@@ -224,7 +211,7 @@ pub async fn uninvite(
             .await?;
 
             if deleted == 0 {
-                return Err(Error::new(ErrorCode::NotFound, "User not in channel"));
+                return Err(Error::not_found("User not in channel"));
             }
 
             push_notifications(
@@ -255,15 +242,14 @@ pub async fn set_channel_member_perm(
     database
         .transaction(async |database| {
             if !channel_exists(database, &channel_id).await? {
-                return Err(Error::new(ErrorCode::NotFound, "Channel not found"));
+                return Err(Error::not_found("Channel not found"));
             }
 
             let issuer_permission =
                 get_channel_member_perm(database, &channel_id, &user_id).await?;
 
             if issuer_permission != ChannelPermission::Manager {
-                return Err(Error::new(
-                    ErrorCode::Restricted,
+                return Err(Error::restricted(
                     "Only channel managers can change member permissions",
                 ));
             }
@@ -272,8 +258,7 @@ pub async fn set_channel_member_perm(
                 get_channel_member_perm(database, &channel_id, &target_user_id).await?;
 
             if target_user_id != user_id && target_permission == ChannelPermission::Manager {
-                return Err(Error::new(
-                    ErrorCode::Restricted,
+                return Err(Error::restricted(
                     "Managers cannot change another manager's permission",
                 ));
             }
@@ -290,8 +275,7 @@ pub async fn set_channel_member_perm(
                     .await?;
 
                 if manager_count <= 1 {
-                    return Err(Error::new(
-                        ErrorCode::Restricted,
+                    return Err(Error::restricted(
                         "Cannot remove the only manager from a channel",
                     ));
                 }
@@ -349,7 +333,7 @@ pub async fn get_channel_member_perm(
         .first::<ChannelPermission>(database)
         .await
         .optional()?
-        .ok_or(Error::new(ErrorCode::NotFound, "User not in channel"))
+        .ok_or(Error::not_found("User not in channel"))
 }
 
 pub async fn channel_exists(
@@ -370,7 +354,7 @@ pub async fn send(database: &mut DatabaseConnection, message: Message) -> Result
         .transaction(async |database| {
             let channel = get_channel(database, &message.channel_id)
                 .await?
-                .ok_or(Error::new(ErrorCode::NotFound, "Channel not found"))?;
+                .ok_or(Error::not_found("Channel not found"))?;
 
             let message_data = message.clone().into_db()?;
 
@@ -382,7 +366,7 @@ pub async fn send(database: &mut DatabaseConnection, message: Message) -> Result
                     diesel::result::Error::DatabaseError(
                         diesel::result::DatabaseErrorKind::UniqueViolation,
                         _,
-                    ) => Error::new(ErrorCode::AlreadyExists, "Message already exists"),
+                    ) => Error::already_exists("Message already exists"),
                     err => err.into(),
                 })?;
 
@@ -437,7 +421,7 @@ pub async fn delete_message(
         .await?;
 
     if deleted == 0 {
-        return Err(Error::new(ErrorCode::NotFound, "Message not found"));
+        return Err(Error::not_found("Message not found"));
     }
 
     Ok(())
