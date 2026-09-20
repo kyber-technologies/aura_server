@@ -74,7 +74,7 @@ impl Service {
 
         let (user, _) = auth::verify(&mut database, &request).await?;
 
-        chat::delete_channel(&mut database, user.user_id, request.into_inner().channel_id).await?;
+        chat::delete_channel(&mut database, request.into_inner().channel_id, user.user_id).await?;
 
         Ok(DeleteChannelResponse { error: None })
     }
