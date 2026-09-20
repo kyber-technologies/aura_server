@@ -179,7 +179,7 @@ pub async fn uninvite(
     database: &mut DatabaseConnection,
     channel_id: String,
     user_id: String,
-    invited_user_id: String,
+    uninvited_user_id: String,
 ) -> Result<(), Error> {
     database
         .transaction(async |database| {
@@ -189,34 +189,53 @@ pub async fn uninvite(
 
             let permission = get_channel_member_perm(database, &channel_id, &user_id).await?;
 
-            if permission != ChannelPermission::Manager {
+            let is_self_uninvite = user_id == uninvited_user_id;
+
+            if !is_self_uninvite && permission != ChannelPermission::Manager {
                 return Err(Error::restricted(
                     "Only channel managers can uninvite users",
                 ));
             }
 
-            let invited_user_permission =
-                get_channel_member_perm(database, &channel_id, &invited_user_id).await?;
+            let target_permission = channel_members::table
+                .filter(channel_members::channel_id.eq(&channel_id))
+                .filter(channel_members::user_id.eq(&uninvited_user_id))
+                .select(channel_members::permission)
+                .first::<ChannelPermission>(database)
+                .await
+                .optional()?
+                .ok_or_else(|| Error::not_found("User is not a member of the channel"))?;
 
-            if invited_user_permission == ChannelPermission::Manager {
-                return Err(Error::restricted("Channel managers cannot be uninvited"));
+            if !is_self_uninvite && target_permission == ChannelPermission::Manager {
+                return Err(Error::restricted("Managers cannot uninvite other managers"));
             }
 
-            let deleted = diesel::delete(
+            if is_self_uninvite && target_permission == ChannelPermission::Manager {
+                let manager_count = channel_members::table
+                    .filter(channel_members::channel_id.eq(&channel_id))
+                    .filter(channel_members::permission.eq(ChannelPermission::Manager))
+                    .count()
+                    .get_result::<i64>(database)
+                    .await?;
+
+                if manager_count <= 1 {
+                    return Err(Error::restricted(
+                        "The only channel manager cannot leave the channel",
+                    ));
+                }
+            }
+
+            diesel::delete(
                 channel_members::table
                     .filter(channel_members::channel_id.eq(&channel_id))
-                    .filter(channel_members::user_id.eq(&invited_user_id)),
+                    .filter(channel_members::user_id.eq(&uninvited_user_id)),
             )
             .execute(database)
             .await?;
 
-            if deleted == 0 {
-                return Err(Error::not_found("User not in channel"));
-            }
-
             push_notifications(
                 database,
-                &invited_user_id,
+                &uninvited_user_id,
                 [Notification::Invite {
                     notification_id: generate_unique_id(),
                     timestamp: Timestamp::now(),
