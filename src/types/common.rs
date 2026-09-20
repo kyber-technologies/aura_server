@@ -1,6 +1,6 @@
 use crate::error::Error;
 use crate::types::GrpcDomainType;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -8,7 +8,11 @@ pub struct Timestamp(pub DateTime<Utc>);
 
 impl Timestamp {
     pub fn now() -> Self {
-        Timestamp(Utc::now())
+        let now = Utc::now();
+        Self(
+            now.with_nanosecond(now.timestamp_subsec_nanos() / 1_000 * 1_000)
+                .expect("valid nanosecond value"),
+        )
     }
 }
 
