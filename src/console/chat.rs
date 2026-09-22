@@ -33,7 +33,7 @@ pub const CREATE: Command = Command {
                     description,
                     members: Default::default(),
                 },
-                owner,
+                &owner,
             )
             .await?;
 
@@ -57,7 +57,7 @@ pub const DELETE: Command = Command {
 
             let mut database = state.database().await?;
 
-            chat::delete_channel(&mut database, channel_id.clone(), user).await?;
+            chat::delete_channel(&mut database, &channel_id, &user).await?;
 
             tracing::info!("Deleted channel '{channel_id}'.");
 
@@ -106,11 +106,10 @@ pub const INVITE: Command = Command {
             let mut database = state.database().await?;
 
             if uninvite {
-                chat::uninvite(&mut database, channel_id.clone(), user, target_user.clone())
-                    .await?;
+                chat::uninvite(&mut database, &channel_id, &user, &target_user).await?;
                 tracing::info!("Uninvited user '{target_user}' from '{channel_id}'.");
             } else {
-                chat::invite(&mut database, channel_id.clone(), user, target_user.clone()).await?;
+                chat::invite(&mut database, &channel_id, &user, &target_user).await?;
                 tracing::info!("Invited user '{target_user}' to '{channel_id}'.");
             }
 
@@ -141,14 +140,8 @@ pub const SET_PERM: Command = Command {
 
             let mut database = state.database().await?;
 
-            chat::set_channel_member_perm(
-                &mut database,
-                channel_id.clone(),
-                user,
-                target_user.clone(),
-                perm,
-            )
-            .await?;
+            chat::set_channel_member_perm(&mut database, &channel_id, &user, &target_user, perm)
+                .await?;
 
             tracing::info!(
                 "Set permission for user '{target_user}' in channel '{channel_id}' to '{perm:?}'."

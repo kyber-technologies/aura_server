@@ -161,11 +161,11 @@ pub async fn get(database: &mut DatabaseConnection, user_id: &str) -> Result<Opt
 
 pub async fn search(
     database: &mut DatabaseConnection,
-    query: String,
+    query: &str,
 ) -> Result<Vec<UserProfile>, Error> {
     let config = config::get();
 
-    let pattern = escape_like_pattern(&query);
+    let pattern = escape_like_pattern(query);
 
     let results = users::table
         .filter(

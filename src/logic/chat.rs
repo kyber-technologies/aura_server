@@ -16,13 +16,13 @@ use diesel_async::{AsyncConnection, RunQueryDsl};
 pub async fn create_channel(
     database: &mut DatabaseConnection,
     mut channel: Channel,
-    owner: String,
+    owner: &str,
 ) -> Result<Channel, Error> {
     database
         .transaction(async |database| {
             channel
                 .members
-                .insert(owner.clone(), ChannelPermission::Manager);
+                .insert(owner.to_string(), ChannelPermission::Manager);
 
             let channel_data = ch_db::Channel {
                 channel_id: channel.channel_id.clone(),
@@ -53,7 +53,7 @@ pub async fn create_channel(
             }
 
             for user_id in channel.members.keys() {
-                if user_id == &owner {
+                if user_id == owner {
                     continue;
                 }
 
@@ -64,7 +64,7 @@ pub async fn create_channel(
                         notification_id: generate_unique_id(),
                         timestamp: Timestamp::now(),
                         channel_id: channel.channel_id.clone(),
-                        invited_by: owner.clone(),
+                        invited_by: owner.to_string(),
                         uninvited: false,
                     }],
                 )
@@ -78,14 +78,14 @@ pub async fn create_channel(
 
 pub async fn delete_channel(
     database: &mut DatabaseConnection,
-    channel_id: String,
-    user_id: String,
+    channel_id: &str,
+    user_id: &str,
 ) -> Result<(), Error> {
-    if !channel_exists(database, &channel_id).await? {
+    if !channel_exists(database, channel_id).await? {
         return Err(Error::not_found("Channel not found"));
     }
 
-    let permission = get_channel_member_perm(database, &channel_id, &user_id).await?;
+    let permission = get_channel_member_perm(database, channel_id, user_id).await?;
 
     if permission != ChannelPermission::Manager {
         return Err(Error::restricted(
@@ -106,29 +106,29 @@ pub async fn delete_channel(
 
 pub async fn invite(
     database: &mut DatabaseConnection,
-    channel_id: String,
-    user_id: String,
-    invited_user_id: String,
+    channel_id: &str,
+    user_id: &str,
+    invited_user_id: &str,
 ) -> Result<(), Error> {
     database
         .transaction(async |database| {
-            if !channel_exists(database, &channel_id).await? {
+            if !channel_exists(database, channel_id).await? {
                 return Err(Error::not_found("Channel not found"));
             }
 
-            let permission = get_channel_member_perm(database, &channel_id, &user_id).await?;
+            let permission = get_channel_member_perm(database, channel_id, user_id).await?;
 
             if permission != ChannelPermission::Manager {
                 return Err(Error::restricted("Only channel managers can invite users"));
             }
 
-            if !user::exists(database, &invited_user_id).await? {
+            if !user::exists(database, invited_user_id).await? {
                 return Err(Error::not_found("User not found"));
             }
 
             let already_member = channel_members::table
-                .filter(channel_members::channel_id.eq(&channel_id))
-                .filter(channel_members::user_id.eq(&invited_user_id))
+                .filter(channel_members::channel_id.eq(channel_id))
+                .filter(channel_members::user_id.eq(invited_user_id))
                 .select(channel_members::user_id)
                 .first::<String>(database)
                 .await
@@ -140,8 +140,8 @@ pub async fn invite(
             }
 
             let member = ch_db::ChannelMember {
-                channel_id: channel_id.clone(),
-                user_id: invited_user_id.clone(),
+                channel_id: channel_id.to_string(),
+                user_id: invited_user_id.to_string(),
                 permission: ChannelPermission::ReadWrite,
             };
 
@@ -159,12 +159,12 @@ pub async fn invite(
 
             push_notifications(
                 database,
-                &invited_user_id,
+                invited_user_id,
                 [Notification::Invite {
                     notification_id: generate_unique_id(),
                     timestamp: Timestamp::now(),
-                    channel_id,
-                    invited_by: user_id,
+                    channel_id: channel_id.to_string(),
+                    invited_by: user_id.to_string(),
                     uninvited: false,
                 }],
             )
@@ -177,17 +177,17 @@ pub async fn invite(
 
 pub async fn uninvite(
     database: &mut DatabaseConnection,
-    channel_id: String,
-    user_id: String,
-    uninvited_user_id: String,
+    channel_id: &str,
+    user_id: &str,
+    uninvited_user_id: &str,
 ) -> Result<(), Error> {
     database
         .transaction(async |database| {
-            if !channel_exists(database, &channel_id).await? {
+            if !channel_exists(database, channel_id).await? {
                 return Err(Error::not_found("Channel not found"));
             }
 
-            let permission = get_channel_member_perm(database, &channel_id, &user_id).await?;
+            let permission = get_channel_member_perm(database, channel_id, user_id).await?;
 
             let is_self_uninvite = user_id == uninvited_user_id;
 
@@ -198,8 +198,8 @@ pub async fn uninvite(
             }
 
             let target_permission = channel_members::table
-                .filter(channel_members::channel_id.eq(&channel_id))
-                .filter(channel_members::user_id.eq(&uninvited_user_id))
+                .filter(channel_members::channel_id.eq(channel_id))
+                .filter(channel_members::user_id.eq(uninvited_user_id))
                 .select(channel_members::permission)
                 .first::<ChannelPermission>(database)
                 .await
@@ -212,7 +212,7 @@ pub async fn uninvite(
 
             if is_self_uninvite && target_permission == ChannelPermission::Manager {
                 let manager_count = channel_members::table
-                    .filter(channel_members::channel_id.eq(&channel_id))
+                    .filter(channel_members::channel_id.eq(channel_id))
                     .filter(channel_members::permission.eq(ChannelPermission::Manager))
                     .count()
                     .get_result::<i64>(database)
@@ -227,20 +227,20 @@ pub async fn uninvite(
 
             diesel::delete(
                 channel_members::table
-                    .filter(channel_members::channel_id.eq(&channel_id))
-                    .filter(channel_members::user_id.eq(&uninvited_user_id)),
+                    .filter(channel_members::channel_id.eq(channel_id))
+                    .filter(channel_members::user_id.eq(uninvited_user_id)),
             )
             .execute(database)
             .await?;
 
             push_notifications(
                 database,
-                &uninvited_user_id,
+                uninvited_user_id,
                 [Notification::Invite {
                     notification_id: generate_unique_id(),
                     timestamp: Timestamp::now(),
-                    channel_id,
-                    invited_by: user_id,
+                    channel_id: channel_id.to_string(),
+                    invited_by: user_id.to_string(),
                     uninvited: true,
                 }],
             )
@@ -253,19 +253,18 @@ pub async fn uninvite(
 
 pub async fn set_channel_member_perm(
     database: &mut DatabaseConnection,
-    channel_id: String,
-    user_id: String,
-    target_user_id: String,
+    channel_id: &str,
+    user_id: &str,
+    target_user_id: &str,
     permission: ChannelPermission,
 ) -> Result<(), Error> {
     database
         .transaction(async |database| {
-            if !channel_exists(database, &channel_id).await? {
+            if !channel_exists(database, channel_id).await? {
                 return Err(Error::not_found("Channel not found"));
             }
 
-            let issuer_permission =
-                get_channel_member_perm(database, &channel_id, &user_id).await?;
+            let issuer_permission = get_channel_member_perm(database, channel_id, user_id).await?;
 
             if issuer_permission != ChannelPermission::Manager {
                 return Err(Error::restricted(
@@ -274,7 +273,7 @@ pub async fn set_channel_member_perm(
             }
 
             let target_permission =
-                get_channel_member_perm(database, &channel_id, &target_user_id).await?;
+                get_channel_member_perm(database, channel_id, target_user_id).await?;
 
             if target_user_id != user_id && target_permission == ChannelPermission::Manager {
                 return Err(Error::restricted(
@@ -287,7 +286,7 @@ pub async fn set_channel_member_perm(
                 && permission != ChannelPermission::Manager
             {
                 let manager_count = channel_members::table
-                    .filter(channel_members::channel_id.eq(&channel_id))
+                    .filter(channel_members::channel_id.eq(channel_id))
                     .filter(channel_members::permission.eq(ChannelPermission::Manager))
                     .count()
                     .get_result::<i64>(database)
@@ -302,8 +301,8 @@ pub async fn set_channel_member_perm(
 
             diesel::update(
                 channel_members::table
-                    .filter(channel_members::channel_id.eq(&channel_id))
-                    .filter(channel_members::user_id.eq(&target_user_id)),
+                    .filter(channel_members::channel_id.eq(channel_id))
+                    .filter(channel_members::user_id.eq(target_user_id)),
             )
             .set(channel_members::permission.eq(permission))
             .execute(database)

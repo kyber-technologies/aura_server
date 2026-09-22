@@ -90,7 +90,7 @@ pub const SEARCH: Command = Command {
      -> Pin<Box<dyn Future<Output = Result<(), CommandError>>>> {
         Box::pin(async move {
             let query: String = args.free_from_str()?;
-            let users = user::search(&mut state.database().await?, query).await?;
+            let users = user::search(&mut state.database().await?, &query).await?;
 
             for user in users {
                 tracing::info!("User '{}' found: {user:#?}", user.user_id);

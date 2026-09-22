@@ -56,7 +56,7 @@ impl Service {
                     })
                     .collect::<Result<FastMap<_, _>, Error>>()?,
             },
-            user.user_id,
+            &user.user_id,
         )
         .await?;
 
@@ -72,10 +72,10 @@ impl Service {
         request: Request<DeleteChannelRequest>,
     ) -> Result<DeleteChannelResponse, Error> {
         let mut database = self.state.database().await?;
-
         let (user, _) = auth::verify(&mut database, &request).await?;
+        let args = request.into_inner();
 
-        chat::delete_channel(&mut database, request.into_inner().channel_id, user.user_id).await?;
+        chat::delete_channel(&mut database, &args.channel_id, &user.user_id).await?;
 
         Ok(DeleteChannelResponse { error: None })
     }
@@ -85,18 +85,16 @@ impl Service {
         request: Request<SetUserPermRequest>,
     ) -> Result<SetUserPermResponse, Error> {
         let mut database = self.state.database().await?;
-
         let (user, _) = auth::verify(&mut database, &request).await?;
-
         let args = request.into_inner();
 
         let perm = args.permission();
 
         chat::set_channel_member_perm(
             &mut database,
-            args.channel_id,
-            user.user_id,
-            args.user_id,
+            &args.channel_id,
+            &user.user_id,
+            &args.user_id,
             ChannelPermission::from_grpc(perm)?,
         )
         .await?;
@@ -106,14 +104,25 @@ impl Service {
 
     async fn _invite(&self, request: Request<InviteRequest>) -> Result<InviteResponse, Error> {
         let mut database = self.state.database().await?;
-
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
 
         if args.uninvite {
-            chat::uninvite(&mut database, args.channel_id, user.user_id, args.user_id).await?;
+            chat::uninvite(
+                &mut database,
+                &args.channel_id,
+                &user.user_id,
+                &args.user_id,
+            )
+            .await?;
         } else {
-            chat::invite(&mut database, args.channel_id, user.user_id, args.user_id).await?;
+            chat::invite(
+                &mut database,
+                &args.channel_id,
+                &user.user_id,
+                &args.user_id,
+            )
+            .await?;
         }
 
         Ok(InviteResponse { error: None })

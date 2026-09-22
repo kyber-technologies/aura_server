@@ -161,7 +161,7 @@ impl Service {
         auth::verify(&mut database, &request).await?;
         let query = request.into_inner().query;
 
-        let users = user::search(&mut database, query)
+        let users = user::search(&mut database, &query)
             .await?
             .into_iter()
             .map(|u| u.into_grpc())
