@@ -102,9 +102,9 @@ pub const SEARCH: Command = Command {
 };
 
 pub const AUTH: Command = Command {
-    name: "auth-user",
+    name: "auth",
     description: "Authenticates a user",
-    usage: "auth-user <user_id> <password>",
+    usage: "auth <user_id> <password>",
     execute: |mut args: Arguments,
               state: ServerState|
      -> Pin<Box<dyn Future<Output = Result<(), CommandError>>>> {
