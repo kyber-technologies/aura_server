@@ -121,3 +121,30 @@ pub const AUTH: Command = Command {
         })
     },
 };
+
+pub const FOLLOW: Command = Command {
+    name: "follow",
+    description: "Un/follows a user",
+    usage: "follow [--unfollow | -u (unfollows the user)] <user_id> <user_to_follow>",
+    execute: |mut args: Arguments,
+              state: ServerState|
+     -> Pin<Box<dyn Future<Output = Result<(), CommandError>>>> {
+        Box::pin(async move {
+            let user_id: String = args.free_from_str()?;
+            let user_to_follow: String = args.free_from_str()?;
+            let unfollow = args.contains(["-u", "--unfollow"]);
+
+            let mut database = state.database().await?;
+
+            if unfollow {
+                user::unfollow(&mut database, &user_id, &user_to_follow).await?;
+                tracing::info!("Unfollowed {user_to_follow}.");
+            } else {
+                user::follow(&mut database, &user_id, &user_to_follow).await?;
+                tracing::info!("Followed {user_to_follow}.");
+            }
+
+            Ok(())
+        })
+    },
+};

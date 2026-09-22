@@ -1,4 +1,5 @@
 use crate::console::{Command, CommandError};
+use crate::error::Error;
 use crate::logic::chat;
 use crate::state::ServerState;
 use crate::types::chat::{Channel, ChannelPermission, Message};
@@ -78,11 +79,11 @@ pub const GET: Command = Command {
 
             let mut database = state.database().await?;
 
-            if let Some(channel) = chat::get_channel(&mut database, &channel_id).await? {
-                tracing::info!("Found Channel: {channel:#?}");
-            } else {
-                tracing::error!("Channel not found.");
-            }
+            let channel = chat::get_channel(&mut database, &channel_id)
+                .await?
+                .ok_or(Error::not_found("Channel not found"));
+
+            tracing::info!("Found Channel: {channel:#?}");
 
             Ok(())
         })

@@ -8,6 +8,7 @@ use std::pin::Pin;
 
 mod chat;
 mod general;
+mod posting;
 mod user;
 mod tracing_writer {
     use rustyline_async::SharedWriter;
@@ -39,6 +40,7 @@ static COMMANDS: &[Command] = &[
     user::DELETE,
     user::AUTH,
     user::SEARCH,
+    user::FOLLOW,
     chat::CREATE,
     chat::DELETE,
     chat::GET,
@@ -47,6 +49,13 @@ static COMMANDS: &[Command] = &[
     chat::SEND,
     chat::READ,
     chat::DELETE_MSG,
+    posting::PUBLISH,
+    posting::UNPUBLISH,
+    posting::GET,
+    posting::GET_OF,
+    posting::SEARCH,
+    posting::REACT,
+    posting::FEED,
 ];
 
 pub fn create() -> (Readline, tracing_writer::TracingWriter) {
@@ -64,15 +73,14 @@ pub async fn run(readline: &mut Readline, state: ServerState) {
                 readline.add_history_entry(line.clone());
 
                 let (command, args) = line.split_once(' ').unwrap_or((line.as_str(), ""));
+                let split = shlex::split(args).unwrap_or_default();
 
                 if command.is_empty() {
                     continue;
                 }
 
                 if let Some(command) = commands.get(command) {
-                    match (command.execute)(Arguments::from_string(args.to_string()), state.clone())
-                        .await
-                    {
+                    match (command.execute)(Arguments::from_vec(split), state.clone()).await {
                         Ok(()) => {}
                         Err(e) => {
                             tracing::error!("Failed to execute command: {}", e);

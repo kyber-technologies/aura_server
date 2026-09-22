@@ -113,6 +113,7 @@ dependencies = [
  "rustyline-async",
  "serde",
  "serde_json",
+ "shlex",
  "smol_str",
  "tokio",
  "tokio-stream",

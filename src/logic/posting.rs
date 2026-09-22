@@ -116,6 +116,7 @@ pub async fn delete(
     Ok(())
 }
 
+// TODO: Add way to fetch multiple.
 pub async fn get(
     database: &mut DatabaseConnection,
     post_id: &str,

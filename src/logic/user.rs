@@ -159,6 +159,7 @@ pub async fn get(database: &mut DatabaseConnection, user_id: &str) -> Result<Opt
     Ok(Some(User::from_db(data)?))
 }
 
+// TODO: Add limit & start_at.
 pub async fn search(
     database: &mut DatabaseConnection,
     query: &str,
