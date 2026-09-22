@@ -10,9 +10,9 @@ use crate::utils::generate_unique_id;
 use aura_rust::chat::v1::chat_service_server::ChatService;
 use aura_rust::chat::v1::{
     CreateChannelRequest, CreateChannelResponse, DeleteChannelRequest, DeleteChannelResponse,
-    DeleteMessageRequest, DeleteMessageResponse, InviteChannelRequest, InviteChannelResponse,
-    ReadMessagesRequest, ReadMessagesResponse, SendMessageRequest, SendMessageResponse,
-    SetUserPermRequest, SetUserPermResponse, create_channel_response, send_message_response,
+    DeleteMessageRequest, DeleteMessageResponse, InviteRequest, InviteResponse, ReadRequest,
+    ReadResponse, SendRequest, SendResponse, SetUserPermRequest, SetUserPermResponse,
+    create_channel_response, send_response,
 };
 use tonic::{Request, Response, Status};
 
@@ -104,10 +104,7 @@ impl Service {
         Ok(SetUserPermResponse { error: None })
     }
 
-    async fn _invite_channel(
-        &self,
-        request: Request<InviteChannelRequest>,
-    ) -> Result<InviteChannelResponse, Error> {
+    async fn _invite(&self, request: Request<InviteRequest>) -> Result<InviteResponse, Error> {
         let mut database = self.state.database().await?;
 
         let (user, _) = auth::verify(&mut database, &request).await?;
@@ -119,13 +116,10 @@ impl Service {
             chat::invite(&mut database, args.channel_id, user.user_id, args.user_id).await?;
         }
 
-        Ok(InviteChannelResponse { error: None })
+        Ok(InviteResponse { error: None })
     }
 
-    async fn _read_messages(
-        &self,
-        request: Request<ReadMessagesRequest>,
-    ) -> Result<ReadMessagesResponse, Error> {
+    async fn _read(&self, request: Request<ReadRequest>) -> Result<ReadResponse, Error> {
         let mut database = self.state.database().await?;
 
         let (user, _) = auth::verify(&mut database, &request).await?;
@@ -140,7 +134,7 @@ impl Service {
             return Err(Error::restricted("User not in channel"));
         }
 
-        let messages = chat::read_messages(
+        let messages = chat::read(
             &mut database,
             &args.channel_id,
             args.limit,
@@ -151,7 +145,7 @@ impl Service {
         )
         .await?;
 
-        Ok(ReadMessagesResponse {
+        Ok(ReadResponse {
             error: None,
             messages: messages
                 .into_iter()
@@ -160,10 +154,7 @@ impl Service {
         })
     }
 
-    async fn _send_message(
-        &self,
-        request: Request<SendMessageRequest>,
-    ) -> Result<SendMessageResponse, Error> {
+    async fn _send(&self, request: Request<SendRequest>) -> Result<SendResponse, Error> {
         let mut database = self.state.database().await?;
 
         let (user, _) = auth::verify(&mut database, &request).await?;
@@ -190,8 +181,8 @@ impl Service {
             )
             .await?;
 
-            Ok(SendMessageResponse {
-                result: Some(send_message_response::Result::Message(msg.into_grpc()?)),
+            Ok(SendResponse {
+                result: Some(send_response::Result::Message(msg.into_grpc()?)),
             })
         } else {
             Err(Error::restricted("User has no permission to send messages"))
@@ -205,7 +196,7 @@ impl Service {
         let mut database = self.state.database().await?;
 
         let (user, _) = auth::verify(&mut database, &request).await?;
-        let message = chat::get_msg(&mut database, &request.into_inner().message_id)
+        let message = chat::get_message(&mut database, &request.into_inner().message_id)
             .await?
             .ok_or(Error::not_found("Message not found"))?;
 
@@ -270,28 +261,25 @@ impl ChatService for Service {
         Ok(Response::new(resp))
     }
 
-    async fn invite_channel(
+    async fn invite(
         &self,
-        request: Request<InviteChannelRequest>,
-    ) -> Result<Response<InviteChannelResponse>, Status> {
-        let resp =
-            self._invite_channel(request)
-                .await
-                .unwrap_or_else(|err| InviteChannelResponse {
-                    error: Some(err.into()),
-                });
+        request: Request<InviteRequest>,
+    ) -> Result<Response<InviteResponse>, Status> {
+        let resp = self
+            ._invite(request)
+            .await
+            .unwrap_or_else(|err| InviteResponse {
+                error: Some(err.into()),
+            });
 
         Ok(Response::new(resp))
     }
 
-    async fn read_messages(
-        &self,
-        request: Request<ReadMessagesRequest>,
-    ) -> Result<Response<ReadMessagesResponse>, Status> {
+    async fn read(&self, request: Request<ReadRequest>) -> Result<Response<ReadResponse>, Status> {
         let resp = self
-            ._read_messages(request)
+            ._read(request)
             .await
-            .unwrap_or_else(|err| ReadMessagesResponse {
+            .unwrap_or_else(|err| ReadResponse {
                 messages: Vec::new(),
                 error: Some(err.into()),
             });
@@ -299,15 +287,12 @@ impl ChatService for Service {
         Ok(Response::new(resp))
     }
 
-    async fn send_message(
-        &self,
-        request: Request<SendMessageRequest>,
-    ) -> Result<Response<SendMessageResponse>, Status> {
+    async fn send(&self, request: Request<SendRequest>) -> Result<Response<SendResponse>, Status> {
         let resp = self
-            ._send_message(request)
+            ._send(request)
             .await
-            .unwrap_or_else(|err| SendMessageResponse {
-                result: Some(send_message_response::Result::Error(err.into())),
+            .unwrap_or_else(|err| SendResponse {
+                result: Some(send_response::Result::Error(err.into())),
             });
 
         Ok(Response::new(resp))

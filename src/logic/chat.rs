@@ -413,7 +413,7 @@ pub async fn send(database: &mut DatabaseConnection, message: Message) -> Result
         .await
 }
 
-pub async fn read_messages(
+pub async fn read(
     database: &mut DatabaseConnection,
     channel_id: &str,
     limit: u32,
@@ -446,7 +446,7 @@ pub async fn delete_message(
     Ok(())
 }
 
-pub async fn get_msg(
+pub async fn get_message(
     database: &mut DatabaseConnection,
     message_id: &str,
 ) -> Result<Option<Message>, Error> {

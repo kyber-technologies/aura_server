@@ -9,8 +9,8 @@ use crate::utils::{SafeStreaming, generate_unique_id};
 use aura_rust::resource::v1::resource_service_server::ResourceService;
 use aura_rust::resource::v1::upload_request::Payload;
 use aura_rust::resource::v1::{
-    DownloadRequest, DownloadResponse, GetResourceMetaRequest, GetResourceMetaResponse,
-    UploadRequest, UploadResponse, download_response, get_resource_meta_response, upload_response,
+    DownloadRequest, DownloadResponse, MetaRequest, MetaResponse, UploadRequest, UploadResponse,
+    download_response, meta_response, upload_response,
 };
 use tonic::codegen::BoxStream;
 use tonic::codegen::tokio_stream::StreamExt;
@@ -135,10 +135,7 @@ impl Service {
         Ok(Box::pin(meta_stream.chain(stream)))
     }
 
-    async fn _get_resource_meta(
-        &self,
-        request: Request<GetResourceMetaRequest>,
-    ) -> Result<GetResourceMetaResponse, Error> {
+    async fn _meta(&self, request: Request<MetaRequest>) -> Result<MetaResponse, Error> {
         let mut database = self.state.database().await?;
 
         let (user, _) = auth::verify(&mut database, &request).await?;
@@ -157,10 +154,8 @@ impl Service {
             return Err(Error::unauthorized("User not authorized"));
         }
 
-        Ok(GetResourceMetaResponse {
-            result: Some(get_resource_meta_response::Result::Meta(
-                desc.meta.into_grpc()?,
-            )),
+        Ok(MetaResponse {
+            result: Some(meta_response::Result::Meta(desc.meta.into_grpc()?)),
         })
     }
 }
@@ -196,15 +191,12 @@ impl ResourceService for Service {
         Ok(Response::new(resp))
     }
 
-    async fn get_resource_meta(
-        &self,
-        request: Request<GetResourceMetaRequest>,
-    ) -> Result<Response<GetResourceMetaResponse>, Status> {
+    async fn meta(&self, request: Request<MetaRequest>) -> Result<Response<MetaResponse>, Status> {
         let resp = self
-            ._get_resource_meta(request)
+            ._meta(request)
             .await
-            .unwrap_or_else(|err| GetResourceMetaResponse {
-                result: Some(get_resource_meta_response::Result::Error(err.into())),
+            .unwrap_or_else(|err| MetaResponse {
+                result: Some(meta_response::Result::Error(err.into())),
             });
 
         Ok(Response::new(resp))

@@ -1,6 +1,6 @@
 use crate::auth;
 use crate::error::Error;
-use crate::logic::{posting, recommendations};
+use crate::logic::{feed, posting};
 use crate::state::ServerState;
 use crate::types::GrpcDomainType;
 use crate::types::common::Timestamp;
@@ -9,10 +9,9 @@ use crate::types::resource::Content;
 use crate::utils::generate_unique_id;
 use aura_rust::posting::v1::posting_service_server::PostingService;
 use aura_rust::posting::v1::{
-    GetPostRequest, GetPostResponse, GetPostsOfRequest, GetPostsOfResponse, PublishRequest,
-    PublishResponse, ReactToPostRequest, ReactToPostResponse, RecommendationsRequest,
-    RecommendationsResponse, SearchPostsRequest, SearchPostsResponse, UnpublishRequest,
-    UnpublishResponse, get_post_response, publish_response,
+    FeedRequest, FeedResponse, GetOfRequest, GetOfResponse, GetRequest, GetResponse,
+    PublishRequest, PublishResponse, ReactRequest, ReactResponse, SearchRequest, SearchResponse,
+    UnpublishRequest, UnpublishResponse, get_response, publish_response,
 };
 use tonic::{Request, Response, Status};
 
@@ -26,28 +25,25 @@ impl Service {
         Self { state }
     }
 
-    async fn _recommendations(
-        &self,
-        request: Request<RecommendationsRequest>,
-    ) -> Result<RecommendationsResponse, Error> {
+    async fn _feed(&self, request: Request<FeedRequest>) -> Result<FeedResponse, Error> {
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
         let req = request.into_inner();
 
-        let user_vector = recommendations::fetch_user_vector(&mut database, &user.user_id)
+        let user_vector = feed::fetch_user_vector(&mut database, &user.user_id)
             .await
             .map_err(|e| Error::internal(format!("Failed fetching user vector: {e}")))?;
 
-        let post_ids = recommendations::get_recommendations(
+        let post_ids = feed::fetch_feed(
             &mut database,
             &user.user_id,
             user_vector,
             req.limit as usize,
         )
         .await
-        .map_err(|e| Error::internal(format!("Failed getting recommendations: {e}")))?;
+        .map_err(|e| Error::internal(format!("Failed fetching feed: {e}")))?;
 
-        Ok(RecommendationsResponse {
+        Ok(FeedResponse {
             post_ids,
             error: None,
         })
@@ -59,7 +55,7 @@ impl Service {
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
 
-        let post = posting::create_post(
+        let post = posting::create(
             &mut database,
             &mut embedder,
             Post {
@@ -90,34 +86,31 @@ impl Service {
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
 
-        posting::delete_post(&mut database, &args.post_id, &user.user_id).await?;
+        posting::delete(&mut database, &args.post_id, &user.user_id).await?;
 
         Ok(UnpublishResponse { error: None })
     }
 
-    async fn _get_post(&self, request: Request<GetPostRequest>) -> Result<GetPostResponse, Error> {
+    async fn _get(&self, request: Request<GetRequest>) -> Result<GetResponse, Error> {
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
 
-        let post = posting::get_post(&mut database, &args.post_id, Some(&user.user_id))
+        let post = posting::get(&mut database, &args.post_id, Some(&user.user_id))
             .await?
             .ok_or(Error::not_found("Post not found"))?;
 
-        Ok(GetPostResponse {
-            result: Some(get_post_response::Result::Post(post.into_grpc()?)),
+        Ok(GetResponse {
+            result: Some(get_response::Result::Post(post.into_grpc()?)),
         })
     }
 
-    async fn _get_posts_of(
-        &self,
-        request: Request<GetPostsOfRequest>,
-    ) -> Result<GetPostsOfResponse, Error> {
+    async fn _get_of(&self, request: Request<GetOfRequest>) -> Result<GetOfResponse, Error> {
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
 
-        let posts = posting::get_posts_of(
+        let posts = posting::get_of(
             &mut database,
             &args.author_id,
             args.limit,
@@ -129,7 +122,7 @@ impl Service {
         )
         .await?;
 
-        Ok(GetPostsOfResponse {
+        Ok(GetOfResponse {
             error: None,
             posts: posts
                 .into_iter()
@@ -140,13 +133,13 @@ impl Service {
 
     async fn _search_posts(
         &self,
-        request: Request<SearchPostsRequest>,
-    ) -> Result<SearchPostsResponse, Error> {
+        request: Request<SearchRequest>,
+    ) -> Result<SearchResponse, Error> {
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
 
-        let posts = posting::search_posts(
+        let posts = posting::search(
             &mut database,
             &args.query,
             args.limit,
@@ -158,7 +151,7 @@ impl Service {
         )
         .await?;
 
-        Ok(SearchPostsResponse {
+        Ok(SearchResponse {
             error: None,
             posts: posts
                 .into_iter()
@@ -167,15 +160,12 @@ impl Service {
         })
     }
 
-    async fn _react_to_post(
-        &self,
-        request: Request<ReactToPostRequest>,
-    ) -> Result<ReactToPostResponse, Error> {
+    async fn _react_to_post(&self, request: Request<ReactRequest>) -> Result<ReactResponse, Error> {
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
 
-        posting::react_to_post(
+        posting::react(
             &mut database,
             &args.post_id,
             &user.user_id,
@@ -183,23 +173,20 @@ impl Service {
         )
         .await?;
 
-        Ok(ReactToPostResponse { error: None })
+        Ok(ReactResponse { error: None })
     }
 }
 
 #[tonic::async_trait]
 impl PostingService for Service {
-    async fn recommendations(
-        &self,
-        request: Request<RecommendationsRequest>,
-    ) -> Result<Response<RecommendationsResponse>, Status> {
-        let resp =
-            self._recommendations(request)
-                .await
-                .unwrap_or_else(|err| RecommendationsResponse {
-                    post_ids: Vec::new(),
-                    error: Some(err.into()),
-                });
+    async fn feed(&self, request: Request<FeedRequest>) -> Result<Response<FeedResponse>, Status> {
+        let resp = self
+            ._feed(request)
+            .await
+            .unwrap_or_else(|err| FeedResponse {
+                post_ids: Vec::new(),
+                error: Some(err.into()),
+            });
 
         Ok(Response::new(resp))
     }
@@ -232,28 +219,22 @@ impl PostingService for Service {
         Ok(Response::new(resp))
     }
 
-    async fn get_post(
-        &self,
-        request: Request<GetPostRequest>,
-    ) -> Result<Response<GetPostResponse>, Status> {
-        let resp = self
-            ._get_post(request)
-            .await
-            .unwrap_or_else(|err| GetPostResponse {
-                result: Some(get_post_response::Result::Error(err.into())),
-            });
+    async fn get(&self, request: Request<GetRequest>) -> Result<Response<GetResponse>, Status> {
+        let resp = self._get(request).await.unwrap_or_else(|err| GetResponse {
+            result: Some(get_response::Result::Error(err.into())),
+        });
 
         Ok(Response::new(resp))
     }
 
-    async fn get_posts_of(
+    async fn get_of(
         &self,
-        request: Request<GetPostsOfRequest>,
-    ) -> Result<Response<GetPostsOfResponse>, Status> {
+        request: Request<GetOfRequest>,
+    ) -> Result<Response<GetOfResponse>, Status> {
         let resp = self
-            ._get_posts_of(request)
+            ._get_of(request)
             .await
-            .unwrap_or_else(|err| GetPostsOfResponse {
+            .unwrap_or_else(|err| GetOfResponse {
                 posts: Vec::new(),
                 error: Some(err.into()),
             });
@@ -261,14 +242,14 @@ impl PostingService for Service {
         Ok(Response::new(resp))
     }
 
-    async fn search_posts(
+    async fn search(
         &self,
-        request: Request<SearchPostsRequest>,
-    ) -> Result<Response<SearchPostsResponse>, Status> {
+        request: Request<SearchRequest>,
+    ) -> Result<Response<SearchResponse>, Status> {
         let resp = self
             ._search_posts(request)
             .await
-            .unwrap_or_else(|err| SearchPostsResponse {
+            .unwrap_or_else(|err| SearchResponse {
                 posts: Vec::new(),
                 error: Some(err.into()),
             });
@@ -276,14 +257,14 @@ impl PostingService for Service {
         Ok(Response::new(resp))
     }
 
-    async fn react_to_post(
+    async fn react(
         &self,
-        request: Request<ReactToPostRequest>,
-    ) -> Result<Response<ReactToPostResponse>, Status> {
+        request: Request<ReactRequest>,
+    ) -> Result<Response<ReactResponse>, Status> {
         let resp = self
             ._react_to_post(request)
             .await
-            .unwrap_or_else(|err| ReactToPostResponse {
+            .unwrap_or_else(|err| ReactResponse {
                 error: Some(err.into()),
             });
 

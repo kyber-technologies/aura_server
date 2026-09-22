@@ -2,8 +2,8 @@ use crate::database::DatabaseConnection;
 use crate::database::posting as db;
 use crate::embedder::TextEmbedder;
 use crate::error::Error;
-use crate::logic::recommendations::PostInteraction;
-use crate::logic::{recommendations, user};
+use crate::logic::feed::PostInteraction;
+use crate::logic::{feed, user};
 use crate::schema::{post_reactions, posts};
 use crate::types::common::Timestamp;
 use crate::types::posting::{Post, PostReaction};
@@ -15,7 +15,7 @@ use diesel::{
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use pgvector::Vector;
 
-pub async fn create_post(
+pub async fn create(
     database: &mut DatabaseConnection,
     embedder: &mut TextEmbedder,
     post: Post,
@@ -65,7 +65,7 @@ pub async fn create_post(
 
             if let Some(parent_vec) = parent_vector {
                 if !parent_vec.as_slice().is_empty() {
-                    recommendations::update_user_vector(
+                    feed::update_user_vector(
                         database,
                         &post.author_id,
                         &parent_vec,
@@ -75,7 +75,7 @@ pub async fn create_post(
                     .await?;
                 }
             } else if !vector.as_slice().is_empty() {
-                recommendations::update_user_vector(
+                feed::update_user_vector(
                     database,
                     &post.author_id,
                     &vector,
@@ -90,7 +90,7 @@ pub async fn create_post(
         .await
 }
 
-pub async fn delete_post(
+pub async fn delete(
     database: &mut DatabaseConnection,
     post_id: &str,
     user_id: &str,
@@ -116,7 +116,7 @@ pub async fn delete_post(
     Ok(())
 }
 
-pub async fn get_post(
+pub async fn get(
     database: &mut DatabaseConnection,
     post_id: &str,
     requesting_user_id: Option<&str>,
@@ -168,7 +168,7 @@ pub async fn get_post(
 }
 
 // TODO: skip posts of blocked users
-pub async fn get_posts_of(
+pub async fn get_of(
     database: &mut DatabaseConnection,
     author_id: &str,
     limit: u32,
@@ -184,11 +184,11 @@ pub async fn get_posts_of(
         .load::<db::Post>(database)
         .await?;
 
-    hydrate_posts(database, raw_posts, requesting_user_id).await
+    hydrate(database, raw_posts, requesting_user_id).await
 }
 
 // TODO: skip posts of blocked users
-pub async fn search_posts(
+pub async fn search(
     database: &mut DatabaseConnection,
     query: &str,
     limit: u32,
@@ -210,71 +210,10 @@ pub async fn search_posts(
         .load::<db::Post>(database)
         .await?;
 
-    hydrate_posts(database, raw_posts, requesting_user_id).await
+    hydrate(database, raw_posts, requesting_user_id).await
 }
 
-async fn hydrate_posts(
-    database: &mut DatabaseConnection,
-    raw_posts: Vec<db::Post>,
-    requesting_user_id: Option<&str>,
-) -> Result<Vec<Post>, Error> {
-    if raw_posts.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let post_ids: Vec<String> = raw_posts.iter().map(|p| p.post_id.clone()).collect();
-
-    let raw_reactions: Vec<(String, PostReaction, i64)> = post_reactions::table
-        .filter(post_reactions::post_id.eq_any(&post_ids))
-        .group_by((post_reactions::post_id, post_reactions::reaction))
-        .select((
-            post_reactions::post_id,
-            post_reactions::reaction,
-            diesel::dsl::count_star(),
-        ))
-        .load(database)
-        .await?;
-
-    let user_reactions: FastMap<String, PostReaction> = if let Some(uid) = requesting_user_id {
-        post_reactions::table
-            .filter(post_reactions::post_id.eq_any(&post_ids))
-            .filter(post_reactions::user_id.eq(uid))
-            .select((post_reactions::post_id, post_reactions::reaction))
-            .load::<(String, PostReaction)>(database)
-            .await?
-            .into_iter()
-            .collect()
-    } else {
-        FastMap::default()
-    };
-
-    let mut counts_map: FastMap<String, Vec<(PostReaction, i64)>> = FastMap::default();
-    for (pid, reaction, count) in raw_reactions {
-        counts_map.entry(pid).or_default().push((reaction, count));
-    }
-
-    let mut domain_posts = Vec::with_capacity(raw_posts.len());
-    for raw_post in raw_posts {
-        let pid = raw_post.post_id.clone();
-        let reaction_counts = counts_map.remove(&pid).unwrap_or_default();
-        let user_reaction = user_reactions
-            .get(&pid)
-            .copied()
-            .unwrap_or(PostReaction::None);
-
-        let post_data = db::PostData {
-            post: raw_post,
-            reaction_counts,
-            user_reaction,
-        };
-
-        domain_posts.push(Post::from_db(post_data)?);
-    }
-
-    Ok(domain_posts)
-}
-
-pub async fn react_to_post(
+pub async fn react(
     database: &mut DatabaseConnection,
     post_id: &str,
     user_id: &str,
@@ -343,18 +282,73 @@ pub async fn react_to_post(
                 };
 
                 if let Some((interaction, revert)) = action {
-                    recommendations::update_user_vector(
-                        database,
-                        user_id,
-                        &post_vec,
-                        interaction,
-                        revert,
-                    )
-                    .await?;
+                    feed::update_user_vector(database, user_id, &post_vec, interaction, revert)
+                        .await?;
                 }
             }
 
             Ok(())
         })
         .await
+}
+
+async fn hydrate(
+    database: &mut DatabaseConnection,
+    raw_posts: Vec<db::Post>,
+    requesting_user_id: Option<&str>,
+) -> Result<Vec<Post>, Error> {
+    if raw_posts.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let post_ids: Vec<String> = raw_posts.iter().map(|p| p.post_id.clone()).collect();
+
+    let raw_reactions: Vec<(String, PostReaction, i64)> = post_reactions::table
+        .filter(post_reactions::post_id.eq_any(&post_ids))
+        .group_by((post_reactions::post_id, post_reactions::reaction))
+        .select((
+            post_reactions::post_id,
+            post_reactions::reaction,
+            diesel::dsl::count_star(),
+        ))
+        .load(database)
+        .await?;
+
+    let user_reactions: FastMap<String, PostReaction> = if let Some(uid) = requesting_user_id {
+        post_reactions::table
+            .filter(post_reactions::post_id.eq_any(&post_ids))
+            .filter(post_reactions::user_id.eq(uid))
+            .select((post_reactions::post_id, post_reactions::reaction))
+            .load::<(String, PostReaction)>(database)
+            .await?
+            .into_iter()
+            .collect()
+    } else {
+        FastMap::default()
+    };
+
+    let mut counts_map: FastMap<String, Vec<(PostReaction, i64)>> = FastMap::default();
+    for (pid, reaction, count) in raw_reactions {
+        counts_map.entry(pid).or_default().push((reaction, count));
+    }
+
+    let mut domain_posts = Vec::with_capacity(raw_posts.len());
+    for raw_post in raw_posts {
+        let pid = raw_post.post_id.clone();
+        let reaction_counts = counts_map.remove(&pid).unwrap_or_default();
+        let user_reaction = user_reactions
+            .get(&pid)
+            .copied()
+            .unwrap_or(PostReaction::None);
+
+        let post_data = db::PostData {
+            post: raw_post,
+            reaction_counts,
+            user_reaction,
+        };
+
+        domain_posts.push(Post::from_db(post_data)?);
+    }
+
+    Ok(domain_posts)
 }

@@ -214,7 +214,7 @@ pub const READ: Command = Command {
 
             let mut database = state.database().await?;
 
-            let messages = chat::read_messages(&mut database, &channel_id, limit, start_at).await?;
+            let messages = chat::read(&mut database, &channel_id, limit, start_at).await?;
 
             tracing::info!("Read Messages: {messages:#?}");
 

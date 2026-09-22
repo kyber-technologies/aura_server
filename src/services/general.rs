@@ -3,9 +3,8 @@ use crate::utils;
 use crate::utils::RESOURCE_CHUNK_SIZE;
 use aura_rust::general::v1::general_service_server::GeneralService;
 use aura_rust::general::v1::{
-    ClearStateRequest, ClearStateResponse, GetConfigRequest, GetConfigResponse,
-    GetEmailTokenRequest, GetEmailTokenResponse, GetServicesRequest, GetServicesResponse,
-    GetTestUsersRequest, GetTestUsersResponse,
+    ClearStateRequest, ClearStateResponse, ConfigRequest, ConfigResponse, EmailTokenRequest,
+    EmailTokenResponse, ServicesRequest, ServicesResponse, TestUsersRequest, TestUsersResponse,
 };
 use tonic::{Request, Response, Status};
 
@@ -22,11 +21,8 @@ impl Service {
 
 #[tonic::async_trait]
 impl GeneralService for Service {
-    async fn get_config(
-        &self,
-        _: Request<GetConfigRequest>,
-    ) -> Result<Response<GetConfigResponse>, Status> {
-        Ok(Response::new(GetConfigResponse {
+    async fn config(&self, _: Request<ConfigRequest>) -> Result<Response<ConfigResponse>, Status> {
+        Ok(Response::new(ConfigResponse {
             version: utils::VERSION.to_string(),
             resource_chunk_size: RESOURCE_CHUNK_SIZE as u32,
         }))
@@ -50,10 +46,10 @@ impl GeneralService for Service {
         Err(Status::failed_precondition("Server not in testing mode"))
     }
 
-    async fn get_email_token(
+    async fn email_token(
         &self,
-        _request: Request<GetEmailTokenRequest>,
-    ) -> Result<Response<GetEmailTokenResponse>, Status> {
+        _request: Request<EmailTokenRequest>,
+    ) -> Result<Response<EmailTokenResponse>, Status> {
         #[cfg(feature = "testing")]
         {
             let email = _request.into_inner().email;
@@ -63,17 +59,17 @@ impl GeneralService for Service {
                 .get_email_token(&email)
                 .expect("Failed to get email token");
 
-            Ok(Response::new(GetEmailTokenResponse { token }))
+            Ok(Response::new(EmailTokenResponse { token }))
         }
 
         #[cfg(not(feature = "testing"))]
         Err(Status::failed_precondition("Server not in testing mode"))
     }
 
-    async fn get_services(
+    async fn services(
         &self,
-        _request: Request<GetServicesRequest>,
-    ) -> Result<Response<GetServicesResponse>, Status> {
+        _request: Request<ServicesRequest>,
+    ) -> Result<Response<ServicesResponse>, Status> {
         #[cfg(feature = "testing")]
         {
             use aura_rust::types::FileDescriptorSet;
@@ -94,22 +90,22 @@ impl GeneralService for Service {
                 })
                 .collect::<Vec<_>>();
 
-            Ok(Response::new(GetServicesResponse { services }))
+            Ok(Response::new(ServicesResponse { services }))
         }
 
         #[cfg(not(feature = "testing"))]
         Err(Status::failed_precondition("Server not in testing mode"))
     }
 
-    async fn get_test_users(
+    async fn test_users(
         &self,
-        _: Request<GetTestUsersRequest>,
-    ) -> Result<Response<GetTestUsersResponse>, Status> {
+        _: Request<TestUsersRequest>,
+    ) -> Result<Response<TestUsersResponse>, Status> {
         #[cfg(feature = "testing")]
         {
             use crate::types::GrpcDomainType;
 
-            Ok(Response::new(GetTestUsersResponse {
+            Ok(Response::new(TestUsersResponse {
                 user: Some(crate::testing::test_user(false).into_grpc().unwrap()),
                 moderator: Some(crate::testing::moderator_user(false).into_grpc().unwrap()),
                 admin: Some(crate::testing::admin_user(false).into_grpc().unwrap()),

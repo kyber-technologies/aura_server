@@ -11,7 +11,6 @@ use crate::types::user::{Notification, Notifications, User, UserProfile, UserRol
 use crate::utils::escape_like_pattern;
 use crate::{auth, config, utils};
 use aura_rust::common::v1::ErrorCode;
-use chrono::Utc;
 use diesel::{
     BoolExpressionMethods, ExpressionMethods, JoinOnDsl, OptionalExtension,
     PgTextExpressionMethods, QueryDsl, SelectableHelper,
@@ -319,7 +318,7 @@ pub async fn exists(database: &mut DatabaseConnection, user_id: &str) -> Result<
         .is_some())
 }
 
-pub async fn follow_user(
+pub async fn follow(
     database: &mut DatabaseConnection,
     follower_id: &str,
     followed_id: &str,
@@ -343,7 +342,7 @@ pub async fn follow_user(
     let follow_row = db::UserFollow {
         follower_id: follower_id.to_string(),
         followed_id: followed_id.to_string(),
-        created_at: Utc::now(),
+        created_at: chrono::Utc::now(),
     };
 
     diesel::insert_into(user_follows::table)
@@ -356,7 +355,7 @@ pub async fn follow_user(
     Ok(())
 }
 
-pub async fn unfollow_user(
+pub async fn unfollow(
     database: &mut DatabaseConnection,
     follower_id: &str,
     followed_id: &str,

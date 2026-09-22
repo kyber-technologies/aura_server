@@ -9,11 +9,10 @@ use crate::types::user::{Notifications, User, UserRole};
 use aura_rust::common::v1::ErrorCode;
 use aura_rust::user::v1::user_service_server::UserService;
 use aura_rust::user::v1::{
-    AuthUserRequest, AuthUserResponse, BlockUserRequest, BlockUserResponse, CreateUserRequest,
-    CreateUserResponse, DeleteUserRequest, DeleteUserResponse, FollowRequest, FollowResponse,
-    GetUserRequest, GetUserResponse, IsBlockedRequest, IsBlockedResponse, SearchUsersRequest,
-    SearchUsersResponse, UpdateUserRequest, UpdateUserResponse, UserExistsRequest,
-    UserExistsResponse, VerifyEmailRequest, VerifyEmailResponse, get_user_response,
+    AuthRequest, AuthResponse, BlockRequest, BlockResponse, CreateRequest, CreateResponse,
+    DeleteRequest, DeleteResponse, ExistsRequest, ExistsResponse, FollowRequest, FollowResponse,
+    GetRequest, GetResponse, IsBlockedRequest, IsBlockedResponse, SearchRequest, SearchResponse,
+    UpdateRequest, UpdateResponse, VerifyEmailRequest, VerifyEmailResponse, get_response,
     is_blocked_response,
 };
 use tonic::{Request, Response, Status};
@@ -27,14 +26,11 @@ impl Service {
         Self { state }
     }
 
-    async fn _user_exists(
-        &self,
-        request: Request<UserExistsRequest>,
-    ) -> Result<UserExistsResponse, Error> {
+    async fn _exists(&self, request: Request<ExistsRequest>) -> Result<ExistsResponse, Error> {
         let user_id = request.into_inner().user_id;
         let exists = user::exists(&mut self.state.database().await?, &user_id).await?;
 
-        Ok(UserExistsResponse {
+        Ok(ExistsResponse {
             error: if exists {
                 None
             } else {
@@ -43,16 +39,13 @@ impl Service {
         })
     }
 
-    async fn _auth_user(
-        &self,
-        request: Request<AuthUserRequest>,
-    ) -> Result<AuthUserResponse, Error> {
+    async fn _auth(&self, request: Request<AuthRequest>) -> Result<AuthResponse, Error> {
         let mut database = self.state.database().await?;
         let verify = auth::verify(&mut database, &request).await;
         let args = request.into_inner();
 
         match verify {
-            Ok((user, token)) => Ok(AuthUserResponse {
+            Ok((user, token)) => Ok(AuthResponse {
                 token,
                 user: Some(user.into_grpc()?),
                 error: None,
@@ -64,7 +57,7 @@ impl Service {
                 {
                     let (token, user) = auth::auth(&mut database, user_id, password).await?;
 
-                    Ok(AuthUserResponse {
+                    Ok(AuthResponse {
                         token,
                         user: Some(user.into_grpc()?),
                         error: None,
@@ -87,10 +80,7 @@ impl Service {
         Ok(VerifyEmailResponse { error: None })
     }
 
-    async fn _create_user(
-        &self,
-        request: Request<CreateUserRequest>,
-    ) -> Result<CreateUserResponse, Error> {
+    async fn _create(&self, request: Request<CreateRequest>) -> Result<CreateResponse, Error> {
         let args = request.into_inner();
 
         self.state
@@ -115,13 +105,10 @@ impl Service {
 
         user::create(&mut self.state.database().await?, user).await?;
 
-        Ok(CreateUserResponse { error: None })
+        Ok(CreateResponse { error: None })
     }
 
-    async fn _delete_user(
-        &self,
-        request: Request<DeleteUserRequest>,
-    ) -> Result<DeleteUserResponse, Error> {
+    async fn _delete(&self, request: Request<DeleteRequest>) -> Result<DeleteResponse, Error> {
         let mut database = self.state.database().await?;
 
         let (user, _) = auth::verify(&mut database, &request).await?;
@@ -131,13 +118,10 @@ impl Service {
 
         user::delete(&mut database, &user.user_id).await?;
 
-        Ok(DeleteUserResponse { error: None })
+        Ok(DeleteResponse { error: None })
     }
 
-    async fn _update_user(
-        &self,
-        request: Request<UpdateUserRequest>,
-    ) -> Result<UpdateUserResponse, Error> {
+    async fn _update(&self, request: Request<UpdateRequest>) -> Result<UpdateResponse, Error> {
         let mut database = self.state.database().await?;
 
         let (mut user, _) = auth::verify(&mut database, &request).await?;
@@ -153,10 +137,10 @@ impl Service {
 
         user::update(&mut database, user).await?;
 
-        Ok(UpdateUserResponse { error: None })
+        Ok(UpdateResponse { error: None })
     }
 
-    async fn _get_user(&self, request: Request<GetUserRequest>) -> Result<GetUserResponse, Error> {
+    async fn _get(&self, request: Request<GetRequest>) -> Result<GetResponse, Error> {
         let mut database = self.state.database().await?;
 
         auth::verify(&mut database, &request).await?;
@@ -166,17 +150,12 @@ impl Service {
             .await?
             .ok_or(Error::not_found("User not found"))?;
 
-        Ok(GetUserResponse {
-            result: Some(get_user_response::Result::User(
-                user.into_profile().into_grpc()?,
-            )),
+        Ok(GetResponse {
+            result: Some(get_response::Result::User(user.into_profile().into_grpc()?)),
         })
     }
 
-    async fn _search_user(
-        &self,
-        request: Request<SearchUsersRequest>,
-    ) -> Result<SearchUsersResponse, Error> {
+    async fn _search(&self, request: Request<SearchRequest>) -> Result<SearchResponse, Error> {
         let mut database = self.state.database().await?;
 
         auth::verify(&mut database, &request).await?;
@@ -188,20 +167,17 @@ impl Service {
             .map(|u| u.into_grpc())
             .collect::<Result<_, Error>>()?;
 
-        Ok(SearchUsersResponse { users, error: None })
+        Ok(SearchResponse { users, error: None })
     }
 
-    async fn _block_user(
-        &self,
-        request: Request<BlockUserRequest>,
-    ) -> Result<BlockUserResponse, Error> {
+    async fn _block(&self, request: Request<BlockRequest>) -> Result<BlockResponse, Error> {
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
-        let BlockUserRequest { user_id, block } = request.into_inner();
+        let BlockRequest { user_id, block } = request.into_inner();
 
         user::block(&mut database, &user.user_id, &user_id, block).await?;
 
-        Ok(BlockUserResponse { error: None })
+        Ok(BlockResponse { error: None })
     }
 
     async fn _is_blocked(
@@ -225,9 +201,9 @@ impl Service {
         let args = request.into_inner();
 
         if args.unfollow {
-            user::unfollow_user(&mut database, &user.user_id, &args.user_id).await?;
+            user::unfollow(&mut database, &user.user_id, &args.user_id).await?;
         } else {
-            user::follow_user(&mut database, &user.user_id, &args.user_id).await?;
+            user::follow(&mut database, &user.user_id, &args.user_id).await?;
         }
 
         Ok(FollowResponse { error: None })
@@ -236,28 +212,25 @@ impl Service {
 
 #[tonic::async_trait]
 impl UserService for Service {
-    async fn user_exists(
+    async fn exists(
         &self,
-        request: Request<UserExistsRequest>,
-    ) -> Result<Response<UserExistsResponse>, Status> {
+        request: Request<ExistsRequest>,
+    ) -> Result<Response<ExistsResponse>, Status> {
         let resp = self
-            ._user_exists(request)
+            ._exists(request)
             .await
-            .unwrap_or_else(|err| UserExistsResponse {
+            .unwrap_or_else(|err| ExistsResponse {
                 error: Some(err.into()),
             });
 
         Ok(Response::new(resp))
     }
 
-    async fn auth_user(
-        &self,
-        request: Request<AuthUserRequest>,
-    ) -> Result<Response<AuthUserResponse>, Status> {
+    async fn auth(&self, request: Request<AuthRequest>) -> Result<Response<AuthResponse>, Status> {
         let resp = self
-            ._auth_user(request)
+            ._auth(request)
             .await
-            .unwrap_or_else(|err| AuthUserResponse {
+            .unwrap_or_else(|err| AuthResponse {
                 token: String::new(),
                 user: None,
                 error: Some(err.into()),
@@ -280,70 +253,64 @@ impl UserService for Service {
         Ok(Response::new(resp))
     }
 
-    async fn create_user(
+    async fn create(
         &self,
-        request: Request<CreateUserRequest>,
-    ) -> Result<Response<CreateUserResponse>, Status> {
+        request: Request<CreateRequest>,
+    ) -> Result<Response<CreateResponse>, Status> {
         let resp = self
-            ._create_user(request)
+            ._create(request)
             .await
-            .unwrap_or_else(|err| CreateUserResponse {
+            .unwrap_or_else(|err| CreateResponse {
                 error: Some(err.into()),
             });
 
         Ok(Response::new(resp))
     }
 
-    async fn delete_user(
+    async fn delete(
         &self,
-        request: Request<DeleteUserRequest>,
-    ) -> Result<Response<DeleteUserResponse>, Status> {
+        request: Request<DeleteRequest>,
+    ) -> Result<Response<DeleteResponse>, Status> {
         let resp = self
-            ._delete_user(request)
+            ._delete(request)
             .await
-            .unwrap_or_else(|err| DeleteUserResponse {
+            .unwrap_or_else(|err| DeleteResponse {
                 error: Some(err.into()),
             });
 
         Ok(Response::new(resp))
     }
 
-    async fn update_user(
+    async fn update(
         &self,
-        request: Request<UpdateUserRequest>,
-    ) -> Result<Response<UpdateUserResponse>, Status> {
+        request: Request<UpdateRequest>,
+    ) -> Result<Response<UpdateResponse>, Status> {
         let resp = self
-            ._update_user(request)
+            ._update(request)
             .await
-            .unwrap_or_else(|err| UpdateUserResponse {
+            .unwrap_or_else(|err| UpdateResponse {
                 error: Some(err.into()),
             });
 
         Ok(Response::new(resp))
     }
 
-    async fn get_user(
-        &self,
-        request: Request<GetUserRequest>,
-    ) -> Result<Response<GetUserResponse>, Status> {
-        let resp = self
-            ._get_user(request)
-            .await
-            .unwrap_or_else(|err| GetUserResponse {
-                result: Some(get_user_response::Result::Error(err.into())),
-            });
+    async fn get(&self, request: Request<GetRequest>) -> Result<Response<GetResponse>, Status> {
+        let resp = self._get(request).await.unwrap_or_else(|err| GetResponse {
+            result: Some(get_response::Result::Error(err.into())),
+        });
 
         Ok(Response::new(resp))
     }
 
-    async fn search_users(
+    async fn search(
         &self,
-        request: Request<SearchUsersRequest>,
-    ) -> Result<Response<SearchUsersResponse>, Status> {
+        request: Request<SearchRequest>,
+    ) -> Result<Response<SearchResponse>, Status> {
         let resp = self
-            ._search_user(request)
+            ._search(request)
             .await
-            .unwrap_or_else(|err| SearchUsersResponse {
+            .unwrap_or_else(|err| SearchResponse {
                 users: Vec::new(),
                 error: Some(err.into()),
             });
@@ -351,14 +318,14 @@ impl UserService for Service {
         Ok(Response::new(resp))
     }
 
-    async fn block_user(
+    async fn block(
         &self,
-        request: Request<BlockUserRequest>,
-    ) -> Result<Response<BlockUserResponse>, Status> {
+        request: Request<BlockRequest>,
+    ) -> Result<Response<BlockResponse>, Status> {
         let resp = self
-            ._block_user(request)
+            ._block(request)
             .await
-            .unwrap_or_else(|err| BlockUserResponse {
+            .unwrap_or_else(|err| BlockResponse {
                 error: Some(err.into()),
             });
 

@@ -37,7 +37,7 @@ pub struct PostData {
 }
 
 #[derive(Clone, Debug, QueryableByName)]
-pub struct RecommendationCandidateRow {
+pub struct FeedCandidateRow {
     #[diesel(sql_type = Text)]
     pub post_id: String,
     #[diesel(sql_type = Double)]

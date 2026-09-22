@@ -1,5 +1,5 @@
 use crate::database::DatabaseConnection;
-use crate::database::posting::RecommendationCandidateRow;
+use crate::database::posting::FeedCandidateRow;
 use crate::error::Error;
 use crate::schema::{post_reactions, posts, users};
 use crate::types::posting::PostReaction;
@@ -9,7 +9,7 @@ use diesel::sql_types::Text;
 use diesel_async::RunQueryDsl;
 use pgvector::Vector;
 
-pub async fn get_recommendations(
+pub async fn fetch_feed(
     database: &mut DatabaseConnection,
     user_id: &str,
     user_vector: Option<Vector>,
@@ -80,7 +80,7 @@ pub async fn fetch_candidates(
     database: &mut DatabaseConnection,
     user_id: &str,
     user_vector: &Vector,
-) -> Result<Vec<RecommendationCandidate>, Error> {
+) -> Result<Vec<FeedCandidate>, Error> {
     let sql = r#"
         WITH
         blocked_users AS (
@@ -145,7 +145,7 @@ pub async fn fetch_candidates(
     let raw_rows = diesel::sql_query(sql)
         .bind::<Text, _>(user_id)
         .bind::<pgvector::sql_types::Vector, _>(user_vector)
-        .load::<RecommendationCandidateRow>(database)
+        .load::<FeedCandidateRow>(database)
         .await?;
 
     if raw_rows.is_empty() {
@@ -177,7 +177,7 @@ pub async fn fetch_candidates(
         .map(|row| {
             let (likes, dislikes) = reaction_counts.get(&row.post_id).copied().unwrap_or((0, 0));
 
-            RecommendationCandidate {
+            FeedCandidate {
                 post_id: row.post_id,
                 created_at: row.created_at,
                 social_weight: row.social_weight as f32,
@@ -295,7 +295,7 @@ pub async fn update_user_vector(
     Ok(())
 }
 
-pub struct RecommendationCandidate {
+pub struct FeedCandidate {
     pub post_id: String,
     pub created_at: DateTime<Utc>,
     pub social_weight: f32,
