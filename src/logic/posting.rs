@@ -4,7 +4,7 @@ use crate::embedder::TextEmbedder;
 use crate::error::Error;
 use crate::logic::feed::PostInteraction;
 use crate::logic::{feed, user};
-use crate::schema::{post_reactions, posts};
+use crate::schema::{post_reactions, posts, user_blocks};
 use crate::types::common::Timestamp;
 use crate::types::posting::{Post, PostReaction};
 use crate::types::{DatabaseDomainType, FastMap, FastSet};
@@ -214,7 +214,6 @@ pub async fn get(
     Ok(result)
 }
 
-// TODO: skip posts of blocked users
 pub async fn get_of(
     database: &mut DatabaseConnection,
     author_id: &str,
@@ -222,9 +221,20 @@ pub async fn get_of(
     start_at: Timestamp,
     requesting_user_id: Option<&str>,
 ) -> Result<Vec<Post>, Error> {
-    let raw_posts = posts::table
+    let mut query = posts::table
+        .into_boxed()
         .filter(posts::author_id.eq(author_id))
-        .filter(posts::timestamp.lt(start_at.0))
+        .filter(posts::timestamp.lt(start_at.0));
+
+    if let Some(uid) = requesting_user_id {
+        let blocked_subquery = user_blocks::table
+            .filter(user_blocks::user_id.eq(uid))
+            .select(user_blocks::blocked_user_id);
+
+        query = query.filter(posts::author_id.ne_all(blocked_subquery));
+    }
+
+    let raw_posts = query
         .order(posts::timestamp.desc())
         .limit(limit as i64)
         .select(db::Post::as_select())
@@ -234,23 +244,33 @@ pub async fn get_of(
     hydrate(database, raw_posts, requesting_user_id).await
 }
 
-// TODO: skip posts of blocked users
 pub async fn search(
     database: &mut DatabaseConnection,
-    query: &str,
+    query_str: &str,
     limit: u32,
     start_at: Timestamp,
     requesting_user_id: Option<&str>,
 ) -> Result<Vec<Post>, Error> {
-    let pattern = escape_like_pattern(query);
+    let pattern = escape_like_pattern(query_str);
 
-    let raw_posts = posts::table
+    let mut query = posts::table
+        .into_boxed()
         .filter(
             posts::content
                 .cast::<diesel::sql_types::Text>()
                 .ilike(&pattern),
         )
-        .filter(posts::timestamp.lt(start_at.0))
+        .filter(posts::timestamp.lt(start_at.0));
+
+    if let Some(uid) = requesting_user_id {
+        let blocked_subquery = user_blocks::table
+            .filter(user_blocks::user_id.eq(uid))
+            .select(user_blocks::blocked_user_id);
+
+        query = query.filter(posts::author_id.ne_all(blocked_subquery));
+    }
+
+    let raw_posts = query
         .order(posts::timestamp.desc())
         .limit(limit as i64)
         .select(db::Post::as_select())
