@@ -5,7 +5,6 @@ use crate::types::resource::Content;
 use crate::types::{DatabaseDomainType, FastMap, GrpcDomainType};
 use aura_rust::posting::v1 as grpc;
 use diesel_derive_enum::DbEnum;
-use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 pub struct Post {
@@ -66,7 +65,7 @@ impl GrpcDomainType for Post {
                 .reactions
                 .into_iter()
                 .map(|(r, i)| Ok((r.into_grpc()?.as_str_name().to_owned(), i)))
-                .collect::<Result<HashMap<String, u32>, Error>>()?,
+                .collect::<Result<std::collections::HashMap<String, u32>, Error>>()?,
             reaction: self.reaction.into_grpc()? as i32,
         })
     }

@@ -7,7 +7,6 @@ use crate::types::{DatabaseDomainType, FastMap, GrpcDomainType};
 use aura_rust::chat::v1 as grpc;
 use diesel_derive_enum::DbEnum;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Channel {
@@ -50,7 +49,7 @@ impl GrpcDomainType for Channel {
                 .members
                 .into_iter()
                 .map(|(k, v)| Ok((k, v.into_grpc()?.into())))
-                .collect::<Result<HashMap<_, _>, Error>>()?,
+                .collect::<Result<std::collections::HashMap<_, _>, Error>>()?,
         })
     }
 }

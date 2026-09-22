@@ -1,7 +1,6 @@
 use crate::error::Error;
 use serde::{Deserialize, Serialize};
 
-// TODO: Replace every hashmap mention with this type.
 pub type FastMap<K, V> = std::collections::HashMap<K, V, ahash::RandomState>;
 pub type FastSet<T> = std::collections::HashSet<T, ahash::RandomState>;
 pub type FastDashMap<K, V> = dashmap::DashMap<K, V, ahash::RandomState>;

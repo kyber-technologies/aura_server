@@ -2,6 +2,7 @@ use crate::database::DatabaseConnection;
 use crate::database::posting::FeedCandidateRow;
 use crate::error::Error;
 use crate::schema::{post_reactions, posts, users};
+use crate::types::FastMap;
 use crate::types::posting::PostReaction;
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
@@ -160,8 +161,7 @@ pub async fn fetch_candidates(
         .load::<(String, PostReaction)>(database)
         .await?;
 
-    use std::collections::HashMap;
-    let mut reaction_counts: HashMap<String, (i64, i64)> = HashMap::new();
+    let mut reaction_counts: FastMap<String, (i64, i64)> = FastMap::default();
 
     for (post_id, reaction) in reactions {
         let entry = reaction_counts.entry(post_id).or_insert((0, 0));
