@@ -11,7 +11,7 @@ use aura_rust::posting::v1::posting_service_server::PostingService;
 use aura_rust::posting::v1::{
     FeedRequest, FeedResponse, GetOfRequest, GetOfResponse, GetRequest, GetResponse,
     PublishRequest, PublishResponse, ReactRequest, ReactResponse, SearchRequest, SearchResponse,
-    UnpublishRequest, UnpublishResponse, get_response, publish_response,
+    UnpublishRequest, UnpublishResponse, publish_response,
 };
 use tonic::{Request, Response, Status};
 
@@ -96,12 +96,15 @@ impl Service {
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
 
-        let post = posting::get(&mut database, &args.post_id, Some(&user.user_id))
-            .await?
-            .ok_or(Error::not_found("Post not found"))?;
+        let posts =
+            posting::get(&mut database, args.post_id.as_slice(), Some(&user.user_id)).await?;
 
         Ok(GetResponse {
-            result: Some(get_response::Result::Post(post.into_grpc()?)),
+            posts: posts
+                .into_iter()
+                .map(|p| p.into_grpc())
+                .collect::<Result<Vec<_>, Error>>()?,
+            error: None,
         })
     }
 
@@ -221,7 +224,8 @@ impl PostingService for Service {
 
     async fn get(&self, request: Request<GetRequest>) -> Result<Response<GetResponse>, Status> {
         let resp = self._get(request).await.unwrap_or_else(|err| GetResponse {
-            result: Some(get_response::Result::Error(err.into())),
+            posts: Vec::new(),
+            error: Some(err.into()),
         });
 
         Ok(Response::new(resp))

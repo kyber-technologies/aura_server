@@ -83,14 +83,15 @@ pub const DELETE: Command = Command {
 
 pub const SEARCH: Command = Command {
     name: "search-users",
-    description: "Search users",
-    usage: "search-users <query>",
+    description: "Search users using a query and a limit",
+    usage: "search-users <query> <limit>",
     execute: |mut args: Arguments,
               state: ServerState|
      -> Pin<Box<dyn Future<Output = Result<(), CommandError>>>> {
         Box::pin(async move {
             let query: String = args.free_from_str()?;
-            let users = user::search(&mut state.database().await?, &query).await?;
+            let limit: i64 = args.free_from_str()?;
+            let users = user::search(&mut state.database().await?, &query, limit).await?;
 
             for user in users {
                 tracing::info!("User '{}' found: {user:#?}", user.user_id);

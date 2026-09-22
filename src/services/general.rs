@@ -1,6 +1,6 @@
 use crate::state::ServerState;
-use crate::utils;
 use crate::utils::RESOURCE_CHUNK_SIZE;
+use crate::{config, utils};
 use aura_rust::general::v1::general_service_server::GeneralService;
 use aura_rust::general::v1::{
     ClearStateRequest, ClearStateResponse, ConfigRequest, ConfigResponse, EmailTokenRequest,
@@ -25,6 +25,7 @@ impl GeneralService for Service {
         Ok(Response::new(ConfigResponse {
             version: utils::VERSION.to_string(),
             resource_chunk_size: RESOURCE_CHUNK_SIZE as u32,
+            item_request_limit: config::get().service.item_request_limit,
         }))
     }
 

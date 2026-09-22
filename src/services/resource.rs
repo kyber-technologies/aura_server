@@ -10,8 +10,9 @@ use aura_rust::resource::v1::resource_service_server::ResourceService;
 use aura_rust::resource::v1::upload_request::Payload;
 use aura_rust::resource::v1::{
     DownloadRequest, DownloadResponse, MetaRequest, MetaResponse, UploadRequest, UploadResponse,
-    download_response, meta_response, upload_response,
+    download_response, upload_response,
 };
+use std::slice;
 use tonic::codegen::BoxStream;
 use tonic::codegen::tokio_stream::StreamExt;
 use tonic::{Request, Response, Status, Streaming};
@@ -67,7 +68,12 @@ impl Service {
             return Err(Error::restricted("User does not have write permissions"));
         }
 
-        let desc = if let Some(desc) = resource::get(&mut database, &desc.resource_id).await? {
+        let desc = if let Some(desc) =
+            resource::get(&mut database, slice::from_ref(&desc.resource_id))
+                .await?
+                .into_iter()
+                .next()
+        {
             desc
         } else {
             resource::create(&mut database, desc).await?
@@ -111,8 +117,10 @@ impl Service {
                 .resource_id
                 .ok_or(Error::invalid_format("Resource ID not provided"))?,
         )?;
-        let desc = resource::get(&mut database, &resource_id)
+        let desc = resource::get(&mut database, slice::from_ref(&resource_id))
             .await?
+            .into_iter()
+            .next()
             .ok_or(Error::not_found("Resource not found"))?;
 
         if !resource::is_download_authorized(&mut database, &desc, &user.user_id).await? {
@@ -137,25 +145,29 @@ impl Service {
 
     async fn _meta(&self, request: Request<MetaRequest>) -> Result<MetaResponse, Error> {
         let mut database = self.state.database().await?;
-
         let (user, _) = auth::verify(&mut database, &request).await?;
-        let resource_id = ResourceId::from_grpc(
-            request
-                .into_inner()
-                .resource_id
-                .ok_or(Error::invalid_format("Resource ID not provided"))?,
-        )?;
+        let args = request.into_inner();
 
-        let desc = resource::get(&mut database, &resource_id)
-            .await?
-            .ok_or(Error::not_found("Resource not found"))?;
+        let ids = args
+            .resource_id
+            .into_iter()
+            .map(ResourceId::from_grpc)
+            .collect::<Result<Vec<_>, Error>>()?;
 
-        if !resource::is_download_authorized(&mut database, &desc, &user.user_id).await? {
-            return Err(Error::unauthorized("User not authorized"));
+        let descriptors = resource::get(&mut database, &ids).await?;
+
+        for desc in &descriptors {
+            if !resource::is_download_authorized(&mut database, desc, &user.user_id).await? {
+                return Err(Error::unauthorized("User not authorized"));
+            }
         }
 
         Ok(MetaResponse {
-            result: Some(meta_response::Result::Meta(desc.meta.into_grpc()?)),
+            metas: descriptors
+                .into_iter()
+                .map(|d| d.meta.into_grpc())
+                .collect::<Result<Vec<_>, _>>()?,
+            error: None,
         })
     }
 }
@@ -196,7 +208,8 @@ impl ResourceService for Service {
             ._meta(request)
             .await
             .unwrap_or_else(|err| MetaResponse {
-                result: Some(meta_response::Result::Error(err.into())),
+                metas: Vec::new(),
+                error: Some(err.into()),
             });
 
         Ok(Response::new(resp))

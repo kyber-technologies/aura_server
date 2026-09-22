@@ -87,7 +87,7 @@ pub struct ServiceConfig {
     pub public_key: String,
     pub private_key: String,
     pub token_expiration: u64,
-    pub max_search_results: i64,
+    pub item_request_limit: u32,
     pub notification_expiration_time: i64,
     pub resource_dir: String,
 }
@@ -107,7 +107,7 @@ impl Default for ServiceConfig {
                 "./secure/private-key.pem"
             }
             .to_string(),
-            max_search_results: 50,
+            item_request_limit: 50,
             token_expiration: 168,
             notification_expiration_time: 144,
             resource_dir: if cfg!(debug_assertions) {

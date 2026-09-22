@@ -7,7 +7,7 @@ use crate::logic::{feed, user};
 use crate::schema::{post_reactions, posts};
 use crate::types::common::Timestamp;
 use crate::types::posting::{Post, PostReaction};
-use crate::types::{DatabaseDomainType, FastMap};
+use crate::types::{DatabaseDomainType, FastMap, FastSet};
 use crate::utils::escape_like_pattern;
 use diesel::{
     ExpressionMethods, OptionalExtension, PgTextExpressionMethods, QueryDsl, SelectableHelper,
@@ -116,56 +116,102 @@ pub async fn delete(
     Ok(())
 }
 
-// TODO: Add way to fetch multiple.
 pub async fn get(
     database: &mut DatabaseConnection,
-    post_id: &str,
+    post_ids: &[String],
     requesting_user_id: Option<&str>,
-) -> Result<Option<Post>, Error> {
-    let post = posts::table
-        .find(post_id)
-        .select(db::Post::as_select())
-        .first::<db::Post>(database)
-        .await
-        .optional()?;
-
-    let Some(post) = post else {
-        return Ok(None);
-    };
-
-    if let Some(uid) = requesting_user_id
-        && user::is_blocked_by(database, uid, &post.author_id).await?
-    {
-        return Err(Error::unwanted("User blocked this post author"));
+) -> Result<Vec<Post>, Error> {
+    if post_ids.is_empty() {
+        return Ok(Vec::new());
     }
 
-    let raw_counts: Vec<(PostReaction, i64)> = post_reactions::table
-        .filter(post_reactions::post_id.eq(post_id))
-        .group_by(post_reactions::reaction)
-        .select((post_reactions::reaction, diesel::dsl::count_star()))
+    let db_posts: Vec<db::Post> = posts::table
+        .filter(posts::post_id.eq_any(post_ids))
+        .select(db::Post::as_select())
+        .load::<db::Post>(database)
+        .await?;
+
+    if db_posts.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    if let Some(uid) = requesting_user_id {
+        let distinct_author_ids: Vec<&str> = db_posts
+            .iter()
+            .map(|p| p.author_id.as_str())
+            .collect::<FastSet<_>>()
+            .into_iter()
+            .collect();
+
+        for author_id in distinct_author_ids {
+            if user::is_blocked_by(database, uid, author_id).await? {
+                return Err(Error::unwanted("User blocked this post author"));
+            }
+        }
+    }
+
+    let found_post_ids: Vec<&str> = db_posts.iter().map(|p| p.post_id.as_str()).collect();
+
+    let raw_counts: Vec<(String, PostReaction, i64)> = post_reactions::table
+        .filter(post_reactions::post_id.eq_any(&found_post_ids))
+        .group_by((post_reactions::post_id, post_reactions::reaction))
+        .select((
+            post_reactions::post_id,
+            post_reactions::reaction,
+            diesel::dsl::count_star(),
+        ))
         .load(database)
         .await?;
 
-    let user_reaction = if let Some(uid) = requesting_user_id {
-        post_reactions::table
-            .filter(post_reactions::post_id.eq(post_id))
+    let mut reaction_counts_map: FastMap<String, Vec<(PostReaction, i64)>> = FastMap::default();
+    for (pid, reaction, count) in raw_counts {
+        reaction_counts_map
+            .entry(pid)
+            .or_default()
+            .push((reaction, count));
+    }
+
+    let mut user_reactions_map: FastMap<String, PostReaction> = FastMap::default();
+    if let Some(uid) = requesting_user_id {
+        let user_reactions: Vec<(String, PostReaction)> = post_reactions::table
+            .filter(post_reactions::post_id.eq_any(&found_post_ids))
             .filter(post_reactions::user_id.eq(uid))
-            .select(post_reactions::reaction)
-            .first::<PostReaction>(database)
-            .await
-            .optional()?
-            .unwrap_or(PostReaction::None)
-    } else {
-        PostReaction::None
-    };
+            .select((post_reactions::post_id, post_reactions::reaction))
+            .load(database)
+            .await?;
 
-    let post_data = db::PostData {
-        post,
-        reaction_counts: raw_counts,
-        user_reaction,
-    };
+        for (pid, reaction) in user_reactions {
+            user_reactions_map.insert(pid, reaction);
+        }
+    }
 
-    Ok(Some(Post::from_db(post_data)?))
+    let mut db_posts_map: FastMap<String, db::Post> = db_posts
+        .into_iter()
+        .map(|p| (p.post_id.clone(), p))
+        .collect();
+
+    let mut result = Vec::with_capacity(post_ids.len());
+    for id in post_ids {
+        if let Some(post) = db_posts_map.remove(id) {
+            let counts = reaction_counts_map
+                .remove(&post.post_id)
+                .unwrap_or_default();
+            let user_reaction = user_reactions_map
+                .get(&post.post_id)
+                .cloned()
+                .unwrap_or(PostReaction::None);
+
+            let post_data = db::PostData {
+                post,
+                reaction_counts: counts,
+                user_reaction,
+            };
+
+            result.push(Post::from_db(post_data)?);
+        }
+    }
+
+    Ok(result)
 }
 
 // TODO: skip posts of blocked users

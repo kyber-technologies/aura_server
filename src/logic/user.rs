@@ -4,10 +4,10 @@ use crate::database::user as db;
 use crate::error::Error;
 use crate::logic::resource;
 use crate::schema::{channel_members, channels, user_blocks, user_follows, users};
-use crate::types::DatabaseDomainType;
 use crate::types::common::Timestamp;
 use crate::types::resource::{ResourceDescriptor, ResourceId, ResourceMeta, ResourceNamespace};
 use crate::types::user::{Notification, Notifications, User, UserProfile, UserRole};
+use crate::types::{DatabaseDomainType, FastMap};
 use crate::utils::escape_like_pattern;
 use crate::{auth, config, utils};
 use aura_rust::common::v1::ErrorCode;
@@ -106,66 +106,116 @@ pub async fn update(database: &mut DatabaseConnection, user: User) -> Result<(),
     Ok(())
 }
 
-pub async fn get(database: &mut DatabaseConnection, user_id: &str) -> Result<Option<User>, Error> {
-    let user = users::table
-        .find(user_id)
+pub async fn get(
+    database: &mut DatabaseConnection,
+    user_ids: &[String],
+) -> Result<Vec<User>, Error> {
+    if user_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let user_rows = users::table
+        .filter(users::user_id.eq_any(user_ids))
         .select(db::User::as_select())
-        .first::<db::User>(database)
-        .await
-        .optional()?;
-
-    let Some(user) = user else {
-        return Ok(None);
-    };
-
-    let channel_rows = channels::table
-        .inner_join(channel_members::table.on(channel_members::channel_id.eq(channels::channel_id)))
-        .filter(channel_members::user_id.eq(user_id))
-        .select(ch_db::Channel::as_select())
-        .load::<ch_db::Channel>(database)
+        .load::<db::User>(database)
         .await?;
 
-    let mut channel_data = Vec::with_capacity(channel_rows.len());
+    if user_rows.is_empty() {
+        return Ok(Vec::new());
+    }
 
-    for channel in channel_rows {
+    let found_user_ids: Vec<&str> = user_rows.iter().map(|u| u.user_id.as_str()).collect();
+
+    let user_channel_tuples = channels::table
+        .inner_join(channel_members::table.on(channel_members::channel_id.eq(channels::channel_id)))
+        .filter(channel_members::user_id.eq_any(&found_user_ids))
+        .select((channel_members::user_id, ch_db::Channel::as_select()))
+        .load::<(String, ch_db::Channel)>(database)
+        .await?;
+
+    let all_channel_ids: Vec<String> = user_channel_tuples
+        .iter()
+        .map(|(_, ch)| ch.channel_id.clone())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    let channel_members_map = if !all_channel_ids.is_empty() {
         let members = channel_members::table
-            .filter(channel_members::channel_id.eq(&channel.channel_id))
+            .filter(channel_members::channel_id.eq_any(&all_channel_ids))
             .select(ch_db::ChannelMember::as_select())
             .load::<ch_db::ChannelMember>(database)
             .await?;
 
-        channel_data.push(ch_db::ChannelData { channel, members });
-    }
-
-    let followers = user_follows::table
-        .filter(user_follows::followed_id.eq(user_id))
-        .select(user_follows::follower_id)
-        .load::<String>(database)
-        .await?;
-
-    let following = user_follows::table
-        .filter(user_follows::follower_id.eq(user_id))
-        .select(user_follows::followed_id)
-        .load::<String>(database)
-        .await?;
-
-    let data = db::UserData {
-        user,
-        channels: channel_data,
-        followers,
-        following,
+        let mut map: FastMap<String, Vec<ch_db::ChannelMember>> = FastMap::default();
+        for member in members {
+            map.entry(member.channel_id.clone())
+                .or_default()
+                .push(member);
+        }
+        map
+    } else {
+        FastMap::default()
     };
 
-    Ok(Some(User::from_db(data)?))
+    let mut user_channels_map: FastMap<String, Vec<ch_db::ChannelData>> = FastMap::default();
+    for (uid, channel) in user_channel_tuples {
+        let members = channel_members_map
+            .get(&channel.channel_id)
+            .cloned()
+            .unwrap_or_default();
+
+        user_channels_map
+            .entry(uid)
+            .or_default()
+            .push(ch_db::ChannelData { channel, members });
+    }
+
+    let follower_tuples = user_follows::table
+        .filter(user_follows::followed_id.eq_any(&found_user_ids))
+        .select((user_follows::followed_id, user_follows::follower_id))
+        .load::<(String, String)>(database)
+        .await?;
+
+    let mut followers_map: FastMap<String, Vec<String>> = FastMap::default();
+    for (followed, follower) in follower_tuples {
+        followers_map.entry(followed).or_default().push(follower);
+    }
+
+    let following_tuples = user_follows::table
+        .filter(user_follows::follower_id.eq_any(&found_user_ids))
+        .select((user_follows::follower_id, user_follows::followed_id))
+        .load::<(String, String)>(database)
+        .await?;
+
+    let mut following_map: FastMap<String, Vec<String>> = FastMap::default();
+    for (follower, followed) in following_tuples {
+        following_map.entry(follower).or_default().push(followed);
+    }
+
+    let mut result = Vec::with_capacity(user_rows.len());
+
+    for user in user_rows {
+        let uid = user.user_id.clone();
+
+        let data = db::UserData {
+            user,
+            channels: user_channels_map.remove(&uid).unwrap_or_default(),
+            followers: followers_map.remove(&uid).unwrap_or_default(),
+            following: following_map.remove(&uid).unwrap_or_default(),
+        };
+
+        result.push(User::from_db(data)?);
+    }
+
+    Ok(result)
 }
 
-// TODO: Add limit & start_at.
 pub async fn search(
     database: &mut DatabaseConnection,
     query: &str,
+    limit: i64,
 ) -> Result<Vec<UserProfile>, Error> {
-    let config = config::get();
-
     let pattern = escape_like_pattern(query);
 
     let results = users::table
@@ -182,7 +232,7 @@ pub async fn search(
             users::icon,
             users::created_at,
         ))
-        .limit(config.service.max_search_results)
+        .limit(limit)
         .load::<(
             String,
             String,

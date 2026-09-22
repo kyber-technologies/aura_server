@@ -8,7 +8,8 @@ use crate::schema::resources;
 use crate::types::DatabaseDomainType;
 use crate::types::resource::{ResourceDescriptor, ResourceId, ResourceNamespace};
 use crate::utils::RESOURCE_CHUNK_SIZE;
-use diesel::{ExpressionMethods, SelectableHelper};
+use diesel::pg::Pg;
+use diesel::{BoolExpressionMethods, BoxableExpression, ExpressionMethods, SelectableHelper};
 use diesel::{OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
 use std::path::{Path, PathBuf};
@@ -37,26 +38,50 @@ pub async fn create(
 
 pub async fn get(
     database: &mut DatabaseConnection,
-    resource_id: &ResourceId,
-) -> Result<Option<ResourceDescriptor>, Error> {
-    let namespace_type = ResourceNamespaceType::from(&resource_id.namespace);
+    resource_ids: &[ResourceId],
+) -> Result<Vec<ResourceDescriptor>, Error> {
+    if resource_ids.is_empty() {
+        return Ok(Vec::new());
+    }
 
-    let namespace_id = match &resource_id.namespace {
-        ResourceNamespace::Aura => "",
-        ResourceNamespace::UserIcon => "",
-        ResourceNamespace::Channel(id) => id.as_str(),
-    };
+    let mut query = resources::table.into_boxed();
 
-    let resource = resources::table
-        .filter(resources::namespace_type.eq(namespace_type))
-        .filter(resources::namespace_id.eq(namespace_id))
-        .filter(resources::key.eq(&resource_id.key))
+    let mut condition: Option<
+        Box<dyn BoxableExpression<resources::table, Pg, SqlType = diesel::sql_types::Bool>>,
+    > = None;
+
+    for resource_id in resource_ids {
+        let namespace_type = ResourceNamespaceType::from(&resource_id.namespace);
+        let namespace_id = match &resource_id.namespace {
+            ResourceNamespace::Aura => "",
+            ResourceNamespace::UserIcon => "",
+            ResourceNamespace::Channel(id) => id.as_str(),
+        };
+
+        let clause = resources::namespace_type
+            .eq(namespace_type)
+            .and(resources::namespace_id.eq(namespace_id.to_string()))
+            .and(resources::key.eq(&resource_id.key));
+
+        condition = match condition {
+            Some(acc) => Some(Box::new(acc.or(clause))),
+            None => Some(Box::new(clause)),
+        };
+    }
+
+    if let Some(cond) = condition {
+        query = query.filter(cond);
+    }
+
+    let db_resources = query
         .select(db::ResourceDescriptor::as_select())
-        .first::<db::ResourceDescriptor>(database)
-        .await
-        .optional()?;
+        .load::<db::ResourceDescriptor>(database)
+        .await?;
 
-    resource.map(ResourceDescriptor::from_db).transpose()
+    db_resources
+        .into_iter()
+        .map(ResourceDescriptor::from_db)
+        .collect::<Result<Vec<_>, _>>()
 }
 
 pub async fn exists(

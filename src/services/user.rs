@@ -12,8 +12,7 @@ use aura_rust::user::v1::{
     AuthRequest, AuthResponse, BlockRequest, BlockResponse, CreateRequest, CreateResponse,
     DeleteRequest, DeleteResponse, ExistsRequest, ExistsResponse, FollowRequest, FollowResponse,
     GetRequest, GetResponse, IsBlockedRequest, IsBlockedResponse, SearchRequest, SearchResponse,
-    UpdateRequest, UpdateResponse, VerifyEmailRequest, VerifyEmailResponse, get_response,
-    is_blocked_response,
+    UpdateRequest, UpdateResponse, VerifyEmailRequest, VerifyEmailResponse, is_blocked_response,
 };
 use tonic::{Request, Response, Status};
 
@@ -146,22 +145,23 @@ impl Service {
         auth::verify(&mut database, &request).await?;
         let user = request.into_inner().user_id;
 
-        let user = user::get(&mut database, &user)
-            .await?
-            .ok_or(Error::not_found("User not found"))?;
+        let users = user::get(&mut database, &user).await?;
 
         Ok(GetResponse {
-            result: Some(get_response::Result::User(user.into_profile().into_grpc()?)),
+            users: users
+                .into_iter()
+                .map(|u| u.into_profile().into_grpc())
+                .collect::<Result<Vec<_>, Error>>()?,
+            error: None,
         })
     }
 
     async fn _search(&self, request: Request<SearchRequest>) -> Result<SearchResponse, Error> {
         let mut database = self.state.database().await?;
-
         auth::verify(&mut database, &request).await?;
-        let query = request.into_inner().query;
+        let args = request.into_inner();
 
-        let users = user::search(&mut database, &query)
+        let users = user::search(&mut database, &args.query, args.limit as i64)
             .await?
             .into_iter()
             .map(|u| u.into_grpc())
@@ -297,7 +297,8 @@ impl UserService for Service {
 
     async fn get(&self, request: Request<GetRequest>) -> Result<Response<GetResponse>, Status> {
         let resp = self._get(request).await.unwrap_or_else(|err| GetResponse {
-            result: Some(get_response::Result::Error(err.into())),
+            users: Vec::new(),
+            error: Some(err.into()),
         });
 
         Ok(Response::new(resp))

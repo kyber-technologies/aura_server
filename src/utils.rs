@@ -1,12 +1,15 @@
+use crate::config;
 use crate::error::Error;
 use std::ops::{Deref, DerefMut};
 use tonic::Streaming;
 use tonic::codec::CompressionEncoding;
 use tonic::codegen::tokio_stream::StreamExt;
 
+// TODO: Make configurable.
 /// Maximum size of a message in bytes (4 KiB).
 pub const MAX_MESSAGE_SIZE: usize = 1024 * 4;
 
+// TODO: Make configurable.
 /// Size of a resource chunk in bytes (2 KiB).
 pub const RESOURCE_CHUNK_SIZE: usize = 1024 * 2;
 
@@ -15,6 +18,17 @@ pub const RESOURCE_CHUNK_SIZE: usize = 1024 * 2;
 pub const COMPRESSION: CompressionEncoding = CompressionEncoding::Gzip;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+// TODO: Integrate.
+pub fn validate_item_length(length: u32) -> Result<(), Error> {
+    let limit = config::get().service.item_request_limit;
+
+    if length > limit {
+        return Err(Error::invalid_format("Item length exceeds limit"));
+    }
+
+    Ok(())
+}
 
 pub fn is_valid_ident(i: &str) -> bool {
     i.chars().all(|c| c.is_alphanumeric() || c == '_')

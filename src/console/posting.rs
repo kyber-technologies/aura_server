@@ -10,6 +10,7 @@ use crate::utils::generate_unique_id;
 use chrono::DateTime;
 use no_pico_args::Arguments;
 use std::pin::Pin;
+use std::slice;
 
 pub const PUBLISH: Command = Command {
     name: "publish",
@@ -58,8 +59,10 @@ pub const UNPUBLISH: Command = Command {
 
             let mut database = state.database().await?;
 
-            let post = posting::get(&mut database, &post_id, None)
+            let post = posting::get(&mut database, slice::from_ref(&post_id), None)
                 .await?
+                .into_iter()
+                .next()
                 .ok_or(Error::not_found("Post not found"))?;
 
             posting::delete(&mut database, &post_id, &post.author_id).await?;
@@ -83,8 +86,10 @@ pub const GET: Command = Command {
 
             let mut database = state.database().await?;
 
-            let post = posting::get(&mut database, &post_id, None)
+            let post = posting::get(&mut database, &[post_id], None)
                 .await?
+                .into_iter()
+                .next()
                 .ok_or(Error::not_found("Post not found"))?;
 
             tracing::info!("Found Post: {post:#?}");
@@ -204,8 +209,10 @@ pub const FEED: Command = Command {
 
                 for id in post_ids {
                     posts.push(
-                        posting::get(&mut database, &id, Some(&user_id))
+                        posting::get(&mut database, &[id], Some(&user_id))
                             .await?
+                            .into_iter()
+                            .next()
                             .ok_or(Error::not_found("Post not found"))?,
                     );
                 }

@@ -63,8 +63,10 @@ pub async fn verify<T>(
                     _ => Error::unauthorized("Invalid token"),
                 })?;
 
-        user::get(database, &claim.claims.user_id)
+        user::get(database, &[claim.claims.user_id])
             .await?
+            .into_iter()
+            .next()
             .map(|user| (user, token.to_string()))
             .ok_or(Error::not_found("User not found"))
     } else {
@@ -77,7 +79,10 @@ pub async fn auth(
     user_id: String,
     password: String,
 ) -> Result<(String, User), Error> {
-    let user = user::get(database, &user_id).await?;
+    let user = user::get(database, std::slice::from_ref(&user_id))
+        .await?
+        .into_iter()
+        .next();
     let auth = Auth {
         user_id,
         exp: SystemTime::UNIX_EPOCH
