@@ -2,8 +2,8 @@ use crate::database::channel as ch_db;
 use crate::database::message as msg_db;
 use crate::error::Error;
 use crate::types::common::Timestamp;
-use crate::types::resource::ResourceId;
-use crate::types::{DatabaseDomainType, FastMap, GrpcDomainType, JsonDatabaseDomainType};
+use crate::types::resource::Content;
+use crate::types::{DatabaseDomainType, FastMap, GrpcDomainType};
 use aura_rust::chat::v1 as grpc;
 use diesel_derive_enum::DbEnum;
 use serde::{Deserialize, Serialize};
@@ -157,43 +157,6 @@ impl DatabaseDomainType for Message {
         })
     }
 }
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum Content {
-    Text(String),
-    Resource(ResourceId),
-}
-
-impl GrpcDomainType for Content {
-    type Type = grpc::Content;
-
-    fn from_grpc(value: Self::Type) -> Result<Self, Error> {
-        Ok(
-            match value
-                .content
-                .ok_or(Error::invalid_format("Content not provided"))?
-            {
-                grpc::content::Content::Text(text) => Content::Text(text),
-                grpc::content::Content::Resource(resource) => {
-                    Content::Resource(ResourceId::from_grpc(resource)?)
-                }
-            },
-        )
-    }
-
-    fn into_grpc(self) -> Result<Self::Type, Error> {
-        Ok(match self {
-            Content::Text(text) => grpc::Content {
-                content: Some(grpc::content::Content::Text(text)),
-            },
-            Content::Resource(resource) => grpc::Content {
-                content: Some(grpc::content::Content::Resource(resource.into_grpc()?)),
-            },
-        })
-    }
-}
-
-impl JsonDatabaseDomainType for Content {}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, DbEnum)]
 #[db_enum(existing_type_path = "crate::schema::sql_types::ChannelPermission")]

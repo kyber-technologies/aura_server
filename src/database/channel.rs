@@ -3,13 +3,13 @@ use diesel::{Insertable, Queryable, Selectable};
 use crate::schema::{channel_members, channels};
 use crate::types::chat::ChannelPermission;
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ChannelData {
     pub channel: Channel,
     pub members: Vec<ChannelMember>,
 }
 
-#[derive(Debug, Queryable, Selectable, Insertable)]
+#[derive(Clone, Debug, PartialEq, Queryable, Selectable, Insertable)]
 #[diesel(table_name = channels)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Channel {
@@ -18,7 +18,7 @@ pub struct Channel {
     pub description: String,
 }
 
-#[derive(Debug, Queryable, Selectable, Insertable)]
+#[derive(Clone, Debug, PartialEq, Queryable, Selectable, Insertable)]
 #[diesel(table_name = channel_members)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ChannelMember {

@@ -1,6 +1,7 @@
 use crate::config;
 use crate::database::{Database, DatabaseConnection};
 use crate::email::EmailRegister;
+use crate::embedder::TextEmbedder;
 use crate::error::Error;
 use std::sync::Arc;
 use std::time::Duration;
@@ -54,6 +55,10 @@ impl ServerState {
 
     pub fn emails(&self) -> &EmailRegister {
         &self.emails
+    }
+
+    pub fn embedder(&self) -> Result<TextEmbedder, Error> {
+        TextEmbedder::new()
     }
 
     pub fn dispose(self) {

@@ -11,12 +11,22 @@ pub const MAX_MESSAGE_SIZE: usize = 1024 * 4;
 pub const RESOURCE_CHUNK_SIZE: usize = 1024 * 2;
 
 /// The compression encoding to use (Gzip).
+// TODO: Investigate into compression
 pub const COMPRESSION: CompressionEncoding = CompressionEncoding::Gzip;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub fn is_valid_ident(i: &str) -> bool {
     i.chars().all(|c| c.is_alphanumeric() || c == '_')
+}
+
+pub fn escape_like_pattern(query: &str) -> String {
+    let escaped = query
+        .replace('\\', r"\\")
+        .replace('%', r"\%")
+        .replace('_', r"\_");
+
+    format!("%{}%", escaped)
 }
 
 pub struct SafeStreaming<T>(Streaming<T>);

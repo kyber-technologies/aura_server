@@ -1,2 +1,1 @@
-DROP INDEX messages_channel_id_idx;
-DROP TABLE messages;
+DROP TABLE IF EXISTS messages;

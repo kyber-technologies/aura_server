@@ -1,9 +1,10 @@
 use crate::connect_info::ConnectInfoInterceptor;
-use crate::services::{ChatService, GeneralService, ResourceService, UserService};
+use crate::services::{ChatService, GeneralService, PostingService, ResourceService, UserService};
 use crate::state::ServerState;
 use crate::utils::{COMPRESSION, MAX_MESSAGE_SIZE};
 use aura_rust::chat::v1::chat_service_server::ChatServiceServer;
 use aura_rust::general::v1::general_service_server::GeneralServiceServer;
+use aura_rust::posting::v1::posting_service_server::PostingServiceServer;
 use aura_rust::resource::v1::resource_service_server::ResourceServiceServer;
 use aura_rust::user::v1::user_service_server::UserServiceServer;
 use logic::user;
@@ -23,6 +24,7 @@ mod connect_info;
 mod console;
 mod database;
 mod email;
+mod embedder;
 mod error;
 mod logic;
 mod schema;
@@ -148,6 +150,13 @@ async fn serve(state: ServerState) {
         )
         .add_service(
             ResourceServiceServer::new(ResourceService::new(state.clone()))
+                .accept_compressed(COMPRESSION)
+                .send_compressed(COMPRESSION)
+                .max_decoding_message_size(MAX_MESSAGE_SIZE)
+                .max_encoding_message_size(MAX_MESSAGE_SIZE),
+        )
+        .add_service(
+            PostingServiceServer::new(PostingService::new(state.clone()))
                 .accept_compressed(COMPRESSION)
                 .send_compressed(COMPRESSION)
                 .max_decoding_message_size(MAX_MESSAGE_SIZE)

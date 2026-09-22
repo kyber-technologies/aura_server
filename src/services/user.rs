@@ -10,10 +10,11 @@ use aura_rust::common::v1::ErrorCode;
 use aura_rust::user::v1::user_service_server::UserService;
 use aura_rust::user::v1::{
     AuthUserRequest, AuthUserResponse, BlockUserRequest, BlockUserResponse, CreateUserRequest,
-    CreateUserResponse, DeleteUserRequest, DeleteUserResponse, GetUserRequest, GetUserResponse,
-    IsBlockedRequest, IsBlockedResponse, SearchUsersRequest, SearchUsersResponse,
-    UpdateUserRequest, UpdateUserResponse, UserExistsRequest, UserExistsResponse,
-    VerifyEmailRequest, VerifyEmailResponse, get_user_response, is_blocked_response,
+    CreateUserResponse, DeleteUserRequest, DeleteUserResponse, FollowRequest, FollowResponse,
+    GetUserRequest, GetUserResponse, IsBlockedRequest, IsBlockedResponse, SearchUsersRequest,
+    SearchUsersResponse, UpdateUserRequest, UpdateUserResponse, UserExistsRequest,
+    UserExistsResponse, VerifyEmailRequest, VerifyEmailResponse, get_user_response,
+    is_blocked_response,
 };
 use tonic::{Request, Response, Status};
 
@@ -106,6 +107,8 @@ impl Service {
             icon: ResourceId::default_user_icon(),
             notifications: Notifications(Vec::new()),
             channels: Vec::new(),
+            followers: Vec::new(),
+            following: Vec::new(),
         };
 
         user.password = auth::hash(user.password)?;
@@ -214,6 +217,20 @@ impl Service {
         Ok(IsBlockedResponse {
             result: Some(is_blocked_response::Result::Blocked(is_blocked)),
         })
+    }
+
+    async fn _follow(&self, request: Request<FollowRequest>) -> Result<FollowResponse, Error> {
+        let mut database = self.state.database().await?;
+        let (user, _) = auth::verify(&mut database, &request).await?;
+        let args = request.into_inner();
+
+        if args.unfollow {
+            user::unfollow_user(&mut database, &user.user_id, &args.user_id).await?;
+        } else {
+            user::follow_user(&mut database, &user.user_id, &args.user_id).await?;
+        }
+
+        Ok(FollowResponse { error: None })
     }
 }
 
@@ -357,6 +374,20 @@ impl UserService for Service {
             .await
             .unwrap_or_else(|err| IsBlockedResponse {
                 result: Some(is_blocked_response::Result::Error(err.into())),
+            });
+
+        Ok(Response::new(resp))
+    }
+
+    async fn follow(
+        &self,
+        request: Request<FollowRequest>,
+    ) -> Result<Response<FollowResponse>, Status> {
+        let resp = self
+            ._follow(request)
+            .await
+            .unwrap_or_else(|err| FollowResponse {
+                error: Some(err.into()),
             });
 
         Ok(Response::new(resp))

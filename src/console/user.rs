@@ -39,6 +39,8 @@ pub const CREATE: Command = Command {
                 icon: ResourceId::default_user_icon(),
                 notifications: Notifications(Vec::new()),
                 channels: Vec::new(),
+                followers: Vec::new(),
+                following: Vec::new(),
             };
 
             if args.contains(["-u", "--update"]) {

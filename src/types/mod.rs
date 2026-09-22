@@ -6,6 +6,7 @@ pub type FastDashMap<K, V> = dashmap::DashMap<K, V, ahash::RandomState>;
 
 pub mod chat;
 pub mod common;
+pub mod posting;
 pub mod resource;
 pub mod user;
 

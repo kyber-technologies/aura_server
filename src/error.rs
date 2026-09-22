@@ -52,6 +52,13 @@ impl Error {
         }
     }
 
+    pub fn unwanted(message: impl ToSmolStr) -> Self {
+        Self {
+            code: ErrorCode::Unwanted,
+            message: message.to_smolstr(),
+        }
+    }
+
     pub fn code_name(&self) -> &'static str {
         match self.code {
             ErrorCode::Unspecified => "UNSPECIFIED",
@@ -61,6 +68,7 @@ impl Error {
             ErrorCode::AlreadyExists => "ALREADY_EXISTS",
             ErrorCode::InvalidFormat => "INVALID_FORMAT",
             ErrorCode::Restricted => "RESTRICTED",
+            ErrorCode::Unwanted => "UNWANTED",
         }
     }
 }
@@ -72,25 +80,6 @@ impl Display for Error {
 }
 
 impl std::error::Error for Error {}
-
-impl From<ErrorCode> for Error {
-    fn from(value: ErrorCode) -> Self {
-        Self {
-            code: value,
-            message: SmolStr::new_static(match value {
-                ErrorCode::Unspecified => "An unspecified error happened. Please report this!",
-                ErrorCode::Internal => "An internal error happened. Please report this!",
-                ErrorCode::Unauthorized => "You are not authorized to do this.",
-                ErrorCode::NotFound => "The target entity could not be found.",
-                ErrorCode::AlreadyExists => "The target entity already exists",
-                ErrorCode::InvalidFormat => {
-                    "An invalid message was given. Are you using the latest API?"
-                }
-                ErrorCode::Restricted => "You are not permitted to do that.",
-            }),
-        }
-    }
-}
 
 impl From<aura_rust::common::v1::Error> for Error {
     fn from(value: aura_rust::common::v1::Error) -> Self {

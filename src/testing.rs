@@ -20,6 +20,8 @@ pub fn test_user(hash: bool) -> User {
         },
         notifications: Notifications(Vec::new()),
         channels: Vec::new(),
+        followers: Vec::new(),
+        following: Vec::new(),
     }
 }
 
@@ -41,6 +43,8 @@ pub fn moderator_user(hash: bool) -> User {
         },
         notifications: Notifications(Vec::new()),
         channels: Vec::new(),
+        followers: Vec::new(),
+        following: Vec::new(),
     }
 }
 
@@ -62,5 +66,7 @@ pub fn admin_user(hash: bool) -> User {
         },
         notifications: Notifications(Vec::new()),
         channels: Vec::new(),
+        followers: Vec::new(),
+        following: Vec::new(),
     }
 }

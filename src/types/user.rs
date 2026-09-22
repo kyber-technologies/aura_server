@@ -19,6 +19,8 @@ pub struct User {
     pub icon: ResourceId,
     pub notifications: Notifications,
     pub channels: Vec<Channel>,
+    pub followers: Vec<String>,
+    pub following: Vec<String>,
 }
 
 impl User {
@@ -29,6 +31,8 @@ impl User {
             role: self.role,
             icon: self.icon,
             created_at: self.created_at,
+            followers: self.followers.len() as u32,
+            following: self.following.len() as u32,
         }
     }
 }
@@ -61,6 +65,8 @@ impl GrpcDomainType for User {
                 .into_iter()
                 .map(Channel::from_grpc)
                 .collect::<Result<Vec<_>, Error>>()?,
+            followers: value.followers,
+            following: value.following,
         })
     }
 
@@ -85,6 +91,8 @@ impl GrpcDomainType for User {
                 .into_iter()
                 .map(|c| c.into_grpc())
                 .collect::<Result<Vec<_>, _>>()?,
+            followers: self.followers,
+            following: self.following,
         })
     }
 }
@@ -107,6 +115,8 @@ impl DatabaseDomainType for User {
                 .into_iter()
                 .map(Channel::from_db)
                 .collect::<Result<Vec<_>, _>>()?,
+            followers: value.followers,
+            following: value.following,
         })
     }
 
@@ -121,12 +131,15 @@ impl DatabaseDomainType for User {
                 icon: self.icon.into_db()?,
                 notifications: self.notifications.into_db()?,
                 created_at: self.created_at.0,
+                embedding: None,
             },
             channels: self
                 .channels
                 .into_iter()
                 .map(|c| c.into_db())
                 .collect::<Result<Vec<_>, Error>>()?,
+            followers: self.followers,
+            following: self.following,
         })
     }
 }
@@ -138,6 +151,8 @@ pub struct UserProfile {
     pub role: UserRole,
     pub icon: ResourceId,
     pub created_at: Timestamp,
+    pub followers: u32,
+    pub following: u32,
 }
 
 impl GrpcDomainType for UserProfile {
@@ -160,6 +175,8 @@ impl GrpcDomainType for UserProfile {
                     .created_at
                     .ok_or(Error::invalid_format("Created at not provided"))?,
             )?,
+            followers: value.followers,
+            following: value.following,
         })
     }
 
@@ -170,6 +187,8 @@ impl GrpcDomainType for UserProfile {
             role: self.role.into_grpc()? as i32,
             icon: Some(self.icon.into_grpc()?),
             created_at: Some(self.created_at.into_grpc()?),
+            followers: self.followers,
+            following: self.following,
         })
     }
 }

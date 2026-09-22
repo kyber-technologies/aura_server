@@ -1,3 +1,3 @@
-DROP TABLE channel_members;
-DROP TABLE channels;
-DROP TYPE channel_permission;
+DROP TABLE IF EXISTS channel_members;
+DROP TABLE IF EXISTS channels;
+DROP TYPE IF EXISTS channel_permission;

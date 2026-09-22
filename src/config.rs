@@ -145,6 +145,8 @@ pub struct DatabaseConfig {
     pub port: u16,
     pub max_pool_size: usize,
     pub log: bool,
+    pub embedding_max_length: usize,
+    pub embedding_threads: usize,
 }
 
 impl Default for DatabaseConfig {
@@ -161,6 +163,8 @@ impl Default for DatabaseConfig {
             port: 5432,
             max_pool_size: 16,
             log: cfg!(debug_assertions),
+            embedding_max_length: 256,
+            embedding_threads: 2,
         }
     }
 }

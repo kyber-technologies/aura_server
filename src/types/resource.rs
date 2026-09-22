@@ -6,6 +6,52 @@ use aura_rust::resource::v1 as grpc;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum Content {
+    Text(String),
+    Resource(ResourceId),
+}
+
+impl Content {
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            Content::Text(text) => Some(text),
+            Content::Resource(_) => None,
+        }
+    }
+}
+
+impl GrpcDomainType for Content {
+    type Type = grpc::Content;
+
+    fn from_grpc(value: Self::Type) -> Result<Self, Error> {
+        Ok(
+            match value
+                .content
+                .ok_or(Error::invalid_format("Content not provided"))?
+            {
+                grpc::content::Content::Text(text) => Content::Text(text),
+                grpc::content::Content::Resource(resource) => {
+                    Content::Resource(ResourceId::from_grpc(resource)?)
+                }
+            },
+        )
+    }
+
+    fn into_grpc(self) -> Result<Self::Type, Error> {
+        Ok(match self {
+            Content::Text(text) => grpc::Content {
+                content: Some(grpc::content::Content::Text(text)),
+            },
+            Content::Resource(resource) => grpc::Content {
+                content: Some(grpc::content::Content::Resource(resource.into_grpc()?)),
+            },
+        })
+    }
+}
+
+impl JsonDatabaseDomainType for Content {}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResourceId {
     pub namespace: ResourceNamespace,

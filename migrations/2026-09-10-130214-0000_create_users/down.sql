@@ -1,2 +1,3 @@
-DROP TABLE users;
-DROP TYPE user_role;
+DROP TABLE IF EXISTS user_follows;
+DROP TABLE IF EXISTS users;
+DROP TYPE IF EXISTS user_role;

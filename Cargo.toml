@@ -20,6 +20,8 @@ diesel = { version = "2.3.13", features = ["postgres", "chrono", "serde_json"] }
 diesel-async = { version = "0.9.2", features = ["postgres", "deadpool", "migrations"] }
 diesel_migrations = { version = "2.3.2", features = ["postgres"] }
 diesel-derive-enum = { version = "3.0.0-beta.1", features = ["postgres"] }
+pgvector = { version = "0.4.2", features = ["diesel", "postgres"] }
+fastembed = { version = "7.0.1", default-features = false, features = ["hf-hub"] }
 
 jsonwebtoken = { version = "11.0.0", features = ["rust_crypto"] }
 argon2 = "0.6.0"

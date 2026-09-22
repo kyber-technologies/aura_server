@@ -3,13 +3,15 @@ use crate::database::channel as ch_db;
 use crate::database::user as db;
 use crate::error::Error;
 use crate::logic::resource;
-use crate::schema::{channel_members, channels, user_blocks, users};
+use crate::schema::{channel_members, channels, user_blocks, user_follows, users};
 use crate::types::DatabaseDomainType;
 use crate::types::common::Timestamp;
 use crate::types::resource::{ResourceDescriptor, ResourceId, ResourceMeta, ResourceNamespace};
 use crate::types::user::{Notification, Notifications, User, UserProfile, UserRole};
+use crate::utils::escape_like_pattern;
 use crate::{auth, config, utils};
 use aura_rust::common::v1::ErrorCode;
+use chrono::Utc;
 use diesel::{
     BoolExpressionMethods, ExpressionMethods, JoinOnDsl, OptionalExtension,
     PgTextExpressionMethods, QueryDsl, SelectableHelper,
@@ -136,9 +138,23 @@ pub async fn get(database: &mut DatabaseConnection, user_id: &str) -> Result<Opt
         channel_data.push(ch_db::ChannelData { channel, members });
     }
 
+    let followers = user_follows::table
+        .filter(user_follows::followed_id.eq(user_id))
+        .select(user_follows::follower_id)
+        .load::<String>(database)
+        .await?;
+
+    let following = user_follows::table
+        .filter(user_follows::follower_id.eq(user_id))
+        .select(user_follows::followed_id)
+        .load::<String>(database)
+        .await?;
+
     let data = db::UserData {
         user,
         channels: channel_data,
+        followers,
+        following,
     };
 
     Ok(Some(User::from_db(data)?))
@@ -150,8 +166,7 @@ pub async fn search(
 ) -> Result<Vec<UserProfile>, Error> {
     let config = config::get();
 
-    // TODO: Investigate into escape characters
-    let pattern = format!("%{}%", query);
+    let pattern = escape_like_pattern(&query);
 
     let results = users::table
         .filter(
@@ -159,6 +174,7 @@ pub async fn search(
                 .ilike(&pattern)
                 .or(users::username.ilike(&pattern)),
         )
+        .left_join(user_follows::table.on(user_follows::followed_id.eq(users::user_id)))
         .select((
             users::user_id,
             users::username,
@@ -176,18 +192,33 @@ pub async fn search(
         )>(database)
         .await?;
 
-    results
-        .into_iter()
-        .map(|(user_id, username, role, icon, created_at)| {
-            Ok(UserProfile {
-                user_id,
-                username,
-                role,
-                icon: ResourceId::from_db(icon)?,
-                created_at: Timestamp(created_at),
-            })
-        })
-        .collect()
+    let mut profiles = Vec::with_capacity(results.len());
+
+    for (user_id, username, role, icon, created_at) in results {
+        let followers_count = user_follows::table
+            .filter(user_follows::followed_id.eq(&user_id))
+            .count()
+            .get_result::<i64>(database)
+            .await? as u32;
+
+        let following_count = user_follows::table
+            .filter(user_follows::follower_id.eq(&user_id))
+            .count()
+            .get_result::<i64>(database)
+            .await? as u32;
+
+        profiles.push(UserProfile {
+            user_id,
+            username,
+            role,
+            icon: ResourceId::from_db(icon)?,
+            created_at: Timestamp(created_at),
+            followers: followers_count,
+            following: following_count,
+        });
+    }
+
+    Ok(profiles)
 }
 
 pub async fn block(
@@ -288,6 +319,59 @@ pub async fn exists(database: &mut DatabaseConnection, user_id: &str) -> Result<
         .is_some())
 }
 
+pub async fn follow_user(
+    database: &mut DatabaseConnection,
+    follower_id: &str,
+    followed_id: &str,
+) -> Result<(), Error> {
+    if follower_id == followed_id {
+        return Err(Error::invalid_format("You cannot follow yourself"));
+    }
+
+    let target_exists = users::table
+        .find(followed_id)
+        .select(users::user_id)
+        .first::<String>(database)
+        .await
+        .optional()?
+        .is_some();
+
+    if !target_exists {
+        return Err(Error::not_found("User to follow not found"));
+    }
+
+    let follow_row = db::UserFollow {
+        follower_id: follower_id.to_string(),
+        followed_id: followed_id.to_string(),
+        created_at: Utc::now(),
+    };
+
+    diesel::insert_into(user_follows::table)
+        .values(&follow_row)
+        .on_conflict((user_follows::follower_id, user_follows::followed_id))
+        .do_nothing()
+        .execute(database)
+        .await?;
+
+    Ok(())
+}
+
+pub async fn unfollow_user(
+    database: &mut DatabaseConnection,
+    follower_id: &str,
+    followed_id: &str,
+) -> Result<(), Error> {
+    diesel::delete(
+        user_follows::table
+            .filter(user_follows::follower_id.eq(follower_id))
+            .filter(user_follows::followed_id.eq(followed_id)),
+    )
+    .execute(database)
+    .await?;
+
+    Ok(())
+}
+
 pub async fn create_admin(database: &mut DatabaseConnection) -> Result<(), Error> {
     if exists(database, "admin").await? {
         match auth::auth(database, "admin".to_string(), "admin".to_string()).await {
@@ -317,6 +401,8 @@ pub async fn create_admin(database: &mut DatabaseConnection) -> Result<(), Error
                 },
                 notifications: Notifications(Vec::new()),
                 channels: Vec::new(),
+                followers: Vec::new(),
+                following: Vec::new(),
             },
         )
         .await?;

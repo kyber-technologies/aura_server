@@ -1,8 +1,9 @@
 use crate::console::{Command, CommandError};
 use crate::logic::chat;
 use crate::state::ServerState;
-use crate::types::chat::{Channel, ChannelPermission, Content, Message};
+use crate::types::chat::{Channel, ChannelPermission, Message};
 use crate::types::common::Timestamp;
+use crate::types::resource::Content;
 use crate::utils::generate_unique_id;
 use chrono::DateTime;
 use no_pico_args::Arguments;
