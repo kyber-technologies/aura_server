@@ -13,8 +13,7 @@ tokio-stream = { version = "0.1.19", default-features = false }
 tracing = { version = "0.1.44", features = ["max_level_info"] }
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["std", "ansi", "fmt"] }
 
-# TODO: Use aws-lc
-tonic = { version = "0.14.6", default-features = false, features = ["server", "router", "zstd", "tls-ring"] }
+tonic = { version = "0.14.6", default-features = false, features = ["server", "router", "zstd", "tls-aws-lc"] }
 tower_governor = { version = "0.8.0", default-features = false, features = ["tonic"] }
 
 diesel = { version = "2.3.13", features = ["postgres", "chrono", "serde_json"] }
@@ -24,8 +23,9 @@ diesel-derive-enum = { version = "3.0.0-beta.1", features = ["postgres"] }
 pgvector = { version = "0.4.2", features = ["diesel", "postgres"] }
 fastembed = { version = "7.0.1", default-features = false, features = ["hf-hub", "ort-download-binaries-rustls-tls"] }
 
-jsonwebtoken = { version = "11.0.0", features = ["rust_crypto"] }
+jsonwebtoken = { version = "11.0.0", features = ["aws_lc_rs"] }
 argon2 = "0.6.0"
+rustls = { version = "0.23.45", default-features = false, features = ["aws_lc_rs", "std", "prefer-post-quantum"] }
 nanoid = "0.5.0"
 
 dashmap = "7.0.0-rc2"
@@ -34,10 +34,10 @@ fastrand = "2.5.0"
 chrono = { version = "0.4.45", default-features = false, features = ["std", "now", "serde"] }
 smol_str = "0.3.6"
 
-lettre = { version = "0.11.23", default-features = false, features = ["builder", "smtp-transport", "pool", "tokio1-rustls", "tokio1", "ring", "rustls-native-certs"] }
+lettre = { version = "0.11.23", default-features = false, features = ["builder", "smtp-transport", "pool", "rustls-native-certs", "tokio1-rustls", "tokio1", "aws-lc-rs"] }
 tera = { version = "2.4.0", features = ["fast"] }
 
-rustyline-async = "0.4.9"
+rustyline-async = { version = "0.4.9", default-features = false }
 no-pico-args = "0.5.1"
 shlex = "2.0.1"
 

@@ -62,6 +62,11 @@ fn main() {
 
     tracing::info!("Logger initialized!");
 
+    tracing::info!("Installing Crypto Provider...");
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .expect("Failed to install default crypto provider");
+
     tracing::info!("########## CONFIGURATION ##########");
     println!("{config:#?}");
 
