@@ -12,14 +12,16 @@ pub struct ServerState {
     database: Database,
     emails: Arc<EmailRegister>,
     exit: Arc<Notify>,
+    embedder: TextEmbedder,
 }
 
 impl ServerState {
     pub async fn create() -> Self {
         Self {
             database: Database::connect().await,
-            emails: Arc::new(EmailRegister::new()),
+            emails: Arc::new(EmailRegister::new().await),
             exit: Arc::new(Notify::new()),
+            embedder: TextEmbedder::new(),
         }
     }
 
@@ -57,8 +59,8 @@ impl ServerState {
         &self.emails
     }
 
-    pub fn embedder(&self) -> Result<TextEmbedder, Error> {
-        TextEmbedder::new()
+    pub fn embedder(&self) -> &TextEmbedder {
+        &self.embedder
     }
 
     pub fn dispose(self) {

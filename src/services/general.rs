@@ -1,5 +1,4 @@
 use crate::state::ServerState;
-use crate::utils::RESOURCE_CHUNK_SIZE;
 use crate::{config, utils};
 use aura_rust::general::v1::general_service_server::GeneralService;
 use aura_rust::general::v1::{
@@ -22,10 +21,12 @@ impl Service {
 #[tonic::async_trait]
 impl GeneralService for Service {
     async fn config(&self, _: Request<ConfigRequest>) -> Result<Response<ConfigResponse>, Status> {
+        let config = config::get();
+
         Ok(Response::new(ConfigResponse {
             version: utils::VERSION.to_string(),
-            resource_chunk_size: RESOURCE_CHUNK_SIZE as u32,
-            item_request_limit: config::get().service.item_request_limit,
+            resource_chunk_size: config.service.resource_chunk_size as u32,
+            item_request_limit: config.service.item_request_limit,
         }))
     }
 

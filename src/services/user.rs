@@ -74,7 +74,7 @@ impl Service {
     ) -> Result<VerifyEmailResponse, Error> {
         let args = request.into_inner();
 
-        self.state.emails().register_email(args.email)?;
+        self.state.emails().register_email(args.email).await?;
 
         Ok(VerifyEmailResponse { error: None })
     }

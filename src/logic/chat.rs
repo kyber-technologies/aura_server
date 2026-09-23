@@ -9,6 +9,7 @@ use crate::types::DatabaseDomainType;
 use crate::types::chat::{Channel, ChannelPermission, Message};
 use crate::types::common::Timestamp;
 use crate::types::user::Notification;
+use crate::utils;
 use crate::utils::generate_unique_id;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, SelectableHelper};
 use diesel_async::{AsyncConnection, RunQueryDsl};
@@ -204,7 +205,7 @@ pub async fn uninvite(
                 .first::<ChannelPermission>(database)
                 .await
                 .optional()?
-                .ok_or_else(|| Error::not_found("User is not a member of the channel"))?;
+                .ok_or(Error::not_found("User is not a member of the channel"))?;
 
             if !is_self_uninvite && target_permission == ChannelPermission::Manager {
                 return Err(Error::restricted("Managers cannot uninvite other managers"));
@@ -418,6 +419,8 @@ pub async fn read(
     limit: u32,
     start_at: Timestamp,
 ) -> Result<Vec<Message>, Error> {
+    utils::validate_item_length(limit)?;
+
     let rows = messages::table
         .filter(messages::channel_id.eq(channel_id))
         .filter(messages::created_at.lt(start_at.0))

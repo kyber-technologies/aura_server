@@ -86,10 +86,12 @@ impl Default for RuntimeConfig {
 pub struct ServiceConfig {
     pub public_key: String,
     pub private_key: String,
+    pub resource_dir: String,
     pub token_expiration: u64,
     pub item_request_limit: u32,
     pub notification_expiration_time: i64,
-    pub resource_dir: String,
+    pub max_message_size: usize,
+    pub resource_chunk_size: usize,
 }
 
 impl Default for ServiceConfig {
@@ -107,15 +109,17 @@ impl Default for ServiceConfig {
                 "./secure/private-key.pem"
             }
             .to_string(),
-            item_request_limit: 50,
-            token_expiration: 168,
-            notification_expiration_time: 144,
             resource_dir: if cfg!(debug_assertions) {
                 "./dev/resources"
             } else {
                 "./resources"
             }
             .to_string(),
+            item_request_limit: 50,
+            token_expiration: 168,
+            notification_expiration_time: 144,
+            max_message_size: 1024 * 4,
+            resource_chunk_size: 1024 * 2,
         }
     }
 }
@@ -147,6 +151,7 @@ pub struct DatabaseConfig {
     pub log: bool,
     pub embedding_max_length: usize,
     pub embedding_threads: usize,
+    pub embedding_pool_size: usize,
 }
 
 impl Default for DatabaseConfig {
@@ -165,6 +170,7 @@ impl Default for DatabaseConfig {
             log: cfg!(debug_assertions),
             embedding_max_length: 256,
             embedding_threads: 2,
+            embedding_pool_size: 4,
         }
     }
 }
@@ -174,8 +180,11 @@ pub struct EmailConfig {
     pub smtp: String,
     pub smtp_user: String,
     pub smtp_password: String,
+    pub verify_token_len: usize,
+    pub relay: bool,
     pub exp: u64,
     pub no_reply_mail: String,
+    pub email_code_tmp: String,
 }
 
 impl Default for EmailConfig {
@@ -189,8 +198,11 @@ impl Default for EmailConfig {
                 "./secure/smtp-password"
             }
             .to_string(),
+            verify_token_len: 6,
+            relay: cfg!(debug_assertions),
             exp: 3600,
             no_reply_mail: "no-reply@aura.social".to_string(),
+            email_code_tmp: "assets/email_code_tmp.html".to_string(),
         }
     }
 }

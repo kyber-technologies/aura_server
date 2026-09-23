@@ -25,7 +25,8 @@ impl Database {
     pub async fn connect() -> Self {
         let config = config::get();
 
-        let pass = std::fs::read_to_string(&config.database.password)
+        let pass = tokio::fs::read_to_string(&config.database.password)
+            .await
             .expect("Failed to read database password")
             .trim()
             .to_string();

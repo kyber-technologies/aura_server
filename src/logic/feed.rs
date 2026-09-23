@@ -4,6 +4,7 @@ use crate::error::Error;
 use crate::schema::{post_reactions, posts, users};
 use crate::types::FastMap;
 use crate::types::posting::PostReaction;
+use crate::utils;
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use diesel::sql_types::Text;
@@ -16,6 +17,8 @@ pub async fn fetch_feed(
     user_vector: Option<Vector>,
     limit: usize,
 ) -> Result<Vec<String>, Error> {
+    utils::validate_item_length(limit as u32)?;
+
     let now = Utc::now();
 
     let vector_param = match user_vector {

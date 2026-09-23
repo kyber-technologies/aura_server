@@ -51,13 +51,12 @@ impl Service {
 
     async fn _publish(&self, request: Request<PublishRequest>) -> Result<PublishResponse, Error> {
         let mut database = self.state.database().await?;
-        let mut embedder = self.state.embedder()?;
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
 
         let post = posting::create(
             &mut database,
-            &mut embedder,
+            self.state.embedder(),
             Post {
                 post_id: generate_unique_id(),
                 author_id: user.user_id,

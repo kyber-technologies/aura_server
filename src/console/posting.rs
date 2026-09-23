@@ -25,11 +25,10 @@ pub const PUBLISH: Command = Command {
             let parent: Option<String> = args.opt_value_from_str(["--parent", "-p"])?;
 
             let mut database = state.database().await?;
-            let mut embedder = state.embedder()?;
 
             posting::create(
                 &mut database,
-                &mut embedder,
+                state.embedder(),
                 Post {
                     post_id: generate_unique_id(),
                     author_id: user_id,

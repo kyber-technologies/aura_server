@@ -1,4 +1,3 @@
-use crate::config;
 use crate::database::DatabaseConnection;
 use crate::database::resource as db;
 use crate::database::resource::ResourceNamespaceType;
@@ -7,7 +6,7 @@ use crate::logic::chat;
 use crate::schema::resources;
 use crate::types::DatabaseDomainType;
 use crate::types::resource::{ResourceDescriptor, ResourceId, ResourceNamespace};
-use crate::utils::RESOURCE_CHUNK_SIZE;
+use crate::{config, utils};
 use diesel::pg::Pg;
 use diesel::{BoolExpressionMethods, BoxableExpression, ExpressionMethods, SelectableHelper};
 use diesel::{OptionalExtension, QueryDsl};
@@ -40,6 +39,8 @@ pub async fn get(
     database: &mut DatabaseConnection,
     resource_ids: &[ResourceId],
 ) -> Result<Vec<ResourceDescriptor>, Error> {
+    utils::validate_item_length(resource_ids.len() as u32)?;
+
     if resource_ids.is_empty() {
         return Ok(Vec::new());
     }
@@ -154,13 +155,14 @@ pub async fn read(id: ResourceId) -> Result<impl Stream<Item = Result<Vec<u8>, E
             Error::internal("Failed to read resource")
         })?;
 
-    let stream = ReaderStream::with_capacity(file, RESOURCE_CHUNK_SIZE).map(|res| {
-        res.map_err(|err| {
-            tracing::error!("Failed reading file: {err}");
-            Error::internal("Failed to read resource")
-        })
-        .map(|by| by.to_vec())
-    });
+    let stream =
+        ReaderStream::with_capacity(file, config::get().service.resource_chunk_size).map(|res| {
+            res.map_err(|err| {
+                tracing::error!("Failed reading file: {err}");
+                Error::internal("Failed to read resource")
+            })
+            .map(|by| by.to_vec())
+        });
 
     Ok(stream)
 }
@@ -182,7 +184,7 @@ pub async fn write(
 
     tokio::pin!(stream);
 
-    let mut buf = BufWriter::with_capacity(RESOURCE_CHUNK_SIZE, file);
+    let mut buf = BufWriter::with_capacity(config::get().service.resource_chunk_size, file);
 
     while let Some(data) = stream.next().await {
         buf.write(&data?).await.map_err(|e| {

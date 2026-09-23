@@ -110,6 +110,8 @@ pub async fn get(
     database: &mut DatabaseConnection,
     user_ids: &[String],
 ) -> Result<Vec<User>, Error> {
+    utils::validate_item_length(user_ids.len() as u32)?;
+
     if user_ids.is_empty() {
         return Ok(Vec::new());
     }
@@ -216,6 +218,8 @@ pub async fn search(
     query: &str,
     limit: i64,
 ) -> Result<Vec<UserProfile>, Error> {
+    utils::validate_item_length(limit as u32)?;
+
     let pattern = escape_like_pattern(query);
 
     let results = users::table

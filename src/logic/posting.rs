@@ -8,6 +8,7 @@ use crate::schema::{post_reactions, posts, user_blocks};
 use crate::types::common::Timestamp;
 use crate::types::posting::{Post, PostReaction};
 use crate::types::{DatabaseDomainType, FastMap, FastSet};
+use crate::utils;
 use crate::utils::escape_like_pattern;
 use diesel::{
     ExpressionMethods, OptionalExtension, PgTextExpressionMethods, QueryDsl, SelectableHelper,
@@ -17,7 +18,7 @@ use pgvector::Vector;
 
 pub async fn create(
     database: &mut DatabaseConnection,
-    embedder: &mut TextEmbedder,
+    embedder: &TextEmbedder,
     post: Post,
 ) -> Result<Post, Error> {
     database
@@ -40,7 +41,8 @@ pub async fn create(
 
             let vector = if let Some(text) = post.content.as_text() {
                 embedder
-                    .embed(&[text])?
+                    .embed(&[text])
+                    .await?
                     .into_iter()
                     .next()
                     .ok_or(Error::internal("No embedding generated"))?
@@ -101,7 +103,7 @@ pub async fn delete(
         .first::<String>(database)
         .await
         .optional()?
-        .ok_or_else(|| Error::not_found("Post not found"))?;
+        .ok_or(Error::not_found("Post not found"))?;
 
     if author != user_id {
         return Err(Error::restricted(
@@ -121,6 +123,8 @@ pub async fn get(
     post_ids: &[String],
     requesting_user_id: Option<&str>,
 ) -> Result<Vec<Post>, Error> {
+    utils::validate_item_length(post_ids.len() as u32)?;
+
     if post_ids.is_empty() {
         return Ok(Vec::new());
     }
@@ -221,6 +225,8 @@ pub async fn get_of(
     start_at: Timestamp,
     requesting_user_id: Option<&str>,
 ) -> Result<Vec<Post>, Error> {
+    utils::validate_item_length(limit)?;
+
     let mut query = posts::table
         .into_boxed()
         .filter(posts::author_id.eq(author_id))
@@ -251,6 +257,8 @@ pub async fn search(
     start_at: Timestamp,
     requesting_user_id: Option<&str>,
 ) -> Result<Vec<Post>, Error> {
+    utils::validate_item_length(limit)?;
+
     let pattern = escape_like_pattern(query_str);
 
     let mut query = posts::table
