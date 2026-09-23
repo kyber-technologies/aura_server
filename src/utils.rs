@@ -2,11 +2,7 @@ use crate::config;
 use crate::error::Error;
 use std::ops::{Deref, DerefMut};
 use tonic::Streaming;
-use tonic::codec::CompressionEncoding;
 use tonic::codegen::tokio_stream::StreamExt;
-
-// TODO: Investigate into compression
-pub const COMPRESSION: CompressionEncoding = CompressionEncoding::Gzip;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

@@ -1,7 +1,6 @@
 use crate::connect_info::ConnectInfoInterceptor;
 use crate::services::{ChatService, GeneralService, PostingService, ResourceService, UserService};
 use crate::state::ServerState;
-use crate::utils::COMPRESSION;
 use aura_rust::chat::v1::chat_service_server::ChatServiceServer;
 use aura_rust::general::v1::general_service_server::GeneralServiceServer;
 use aura_rust::posting::v1::posting_service_server::PostingServiceServer;
@@ -11,6 +10,7 @@ use logic::user;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
+use tonic::codec::CompressionEncoding;
 use tonic::service::InterceptorLayer;
 use tonic::transport::Server;
 use tower_governor::GovernorLayer;
@@ -129,36 +129,33 @@ async fn serve(state: ServerState) {
         ))
         .add_service(
             GeneralServiceServer::new(GeneralService::new(state.clone()))
-                .accept_compressed(COMPRESSION)
-                .send_compressed(COMPRESSION)
+                .accept_compressed(CompressionEncoding::Zstd)
                 .max_decoding_message_size(config.service.max_message_size)
                 .max_encoding_message_size(config.service.max_message_size),
         )
         .add_service(
             UserServiceServer::new(UserService::new(state.clone()))
-                .accept_compressed(COMPRESSION)
-                .send_compressed(COMPRESSION)
+                .accept_compressed(CompressionEncoding::Zstd)
                 .max_decoding_message_size(config.service.max_message_size)
                 .max_encoding_message_size(config.service.max_message_size),
         )
         .add_service(
             ChatServiceServer::new(ChatService::new(state.clone()))
-                .accept_compressed(COMPRESSION)
-                .send_compressed(COMPRESSION)
+                .accept_compressed(CompressionEncoding::Zstd)
                 .max_decoding_message_size(config.service.max_message_size)
                 .max_encoding_message_size(config.service.max_message_size),
         )
         .add_service(
             ResourceServiceServer::new(ResourceService::new(state.clone()))
-                .accept_compressed(COMPRESSION)
-                .send_compressed(COMPRESSION)
+                .accept_compressed(CompressionEncoding::Zstd)
+                // Send compressed responses for resource service
+                .send_compressed(CompressionEncoding::Zstd)
                 .max_decoding_message_size(config.service.max_message_size)
                 .max_encoding_message_size(config.service.max_message_size),
         )
         .add_service(
             PostingServiceServer::new(PostingService::new(state.clone()))
-                .accept_compressed(COMPRESSION)
-                .send_compressed(COMPRESSION)
+                .accept_compressed(CompressionEncoding::Zstd)
                 .max_decoding_message_size(config.service.max_message_size)
                 .max_encoding_message_size(config.service.max_message_size),
         );

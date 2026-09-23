@@ -13,7 +13,8 @@ tokio-stream = { version = "0.1.19", default-features = false }
 tracing = { version = "0.1.44", features = ["max_level_info"] }
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["std", "ansi", "fmt"] }
 
-tonic = { version = "0.14.6", default-features = false, features = ["server", "router", "gzip"] }
+# TODO: Use aws-lc
+tonic = { version = "0.14.6", default-features = false, features = ["server", "router", "zstd", "tls-ring"] }
 tower_governor = { version = "0.8.0", default-features = false, features = ["tonic"] }
 
 diesel = { version = "2.3.13", features = ["postgres", "chrono", "serde_json"] }
