@@ -134,8 +134,32 @@ async fn serve(state: ServerState) {
         "Serving Elysium at '{}'...",
         config.network.address.as_str()
     );
-    // TODO: More config.
     let builder = Server::builder()
+        .timeout(Duration::from_secs(config.network.timeout))
+        .concurrency_limit_per_connection(config.network.concurrency_limit_per_connection)
+        .max_concurrent_streams(config.network.max_concurrent_streams)
+        .max_connection_age(Duration::from_secs(config.network.max_connection_age))
+        .max_connection_age_grace(Duration::from_secs(config.network.max_connection_age_grace))
+        .http2_keepalive_interval(Some(Duration::from_secs(
+            config.network.http2_keepalive_interval,
+        )))
+        .http2_keepalive_timeout(Some(Duration::from_secs(
+            config.network.http2_keepalive_timeout,
+        )))
+        .tcp_keepalive(Some(Duration::from_secs(config.network.tcp_keepalive)))
+        .tcp_keepalive_interval(Some(Duration::from_secs(
+            config.network.tcp_keepalive_interval,
+        )))
+        .tcp_keepalive_retries(Some(config.network.tcp_keepalive_retries))
+        .load_shed(true)
+        .tcp_nodelay(true)
+        .http2_adaptive_window(Some(true))
+        .initial_stream_window_size(1024 * 1024) // 1 MB
+        .http2_max_header_list_size(1024 * 16) // 16 KB
+        .max_frame_size(1024 * 16) // 16 KB
+        .http2_max_pending_accept_reset_streams(Some(20))
+        .http2_max_local_error_reset_streams(Some(20))
+        .accept_http1(false)
         .tls_config(tls_config)
         .expect("Failed to build TLS config")
         .layer(InterceptorLayer::new(ConnectInfoInterceptor))

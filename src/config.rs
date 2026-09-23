@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
+// TODO: Support deserializing duration
 static CONFIG: OnceLock<Config> = OnceLock::new();
 
 pub fn init() {
@@ -129,10 +130,19 @@ pub struct NetworkConfig {
     pub address: String,
     pub rate_limit_replenish: u64,
     pub rate_limit_burst: u32,
-    // TODO: Support deserializing duration
     pub tls_timeout: u64,
     pub tls_certificate: String,
     pub tls_key: String,
+    pub timeout: u64,
+    pub concurrency_limit_per_connection: usize,
+    pub max_concurrent_streams: u32,
+    pub max_connection_age: u64,
+    pub max_connection_age_grace: u64,
+    pub http2_keepalive_interval: u64,
+    pub http2_keepalive_timeout: u64,
+    pub tcp_keepalive: u64,
+    pub tcp_keepalive_interval: u64,
+    pub tcp_keepalive_retries: u32,
 }
 
 impl Default for NetworkConfig {
@@ -154,6 +164,16 @@ impl Default for NetworkConfig {
                 "./secure/tls-key.pem"
             }
             .to_string(),
+            timeout: 30,
+            concurrency_limit_per_connection: 256,
+            max_concurrent_streams: 1024,
+            max_connection_age: 600,
+            max_connection_age_grace: 30,
+            http2_keepalive_interval: 30,
+            http2_keepalive_timeout: 10,
+            tcp_keepalive: 60,
+            tcp_keepalive_interval: 10,
+            tcp_keepalive_retries: 3,
         }
     }
 }
