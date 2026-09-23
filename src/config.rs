@@ -129,6 +129,10 @@ pub struct NetworkConfig {
     pub address: String,
     pub rate_limit_replenish: u64,
     pub rate_limit_burst: u32,
+    // TODO: Support deserializing duration
+    pub tls_timeout: u64,
+    pub tls_certificate: String,
+    pub tls_key: String,
 }
 
 impl Default for NetworkConfig {
@@ -137,6 +141,19 @@ impl Default for NetworkConfig {
             address: "127.0.0.1:50051".to_string(),
             rate_limit_replenish: 100,
             rate_limit_burst: 30,
+            tls_timeout: 5,
+            tls_certificate: if cfg!(debug_assertions) {
+                "./dev/tls-cert.pem"
+            } else {
+                "./secure/tls-cert.pem"
+            }
+            .to_string(),
+            tls_key: if cfg!(debug_assertions) {
+                "./dev/tls-key.pem"
+            } else {
+                "./secure/tls-key.pem"
+            }
+            .to_string(),
         }
     }
 }

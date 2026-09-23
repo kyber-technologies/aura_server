@@ -12,7 +12,7 @@ use std::str::FromStr;
 use std::time::Duration;
 use tonic::codec::CompressionEncoding;
 use tonic::service::InterceptorLayer;
-use tonic::transport::Server;
+use tonic::transport::{Identity, Server, ServerTlsConfig};
 use tower_governor::GovernorLayer;
 use tower_governor::governor::GovernorConfigBuilder;
 use tower_governor::key_extractor::SmartIpKeyExtractor;
@@ -113,11 +113,31 @@ async fn serve(state: ServerState) {
     .await
     .expect("Failed to create admin user");
 
+    let tls_config = {
+        let tls_cert = tokio::fs::read_to_string(&config.network.tls_certificate)
+            .await
+            .expect("Failed to read TLS certificate");
+
+        let tls_key = tokio::fs::read_to_string(&config.network.tls_key)
+            .await
+            .expect("Failed to read TLS key");
+
+        let identity = Identity::from_pem(tls_cert, tls_key);
+
+        ServerTlsConfig::new()
+            .timeout(Duration::from_secs(config.network.tls_timeout))
+            .identity(identity)
+            .ignore_client_order(true)
+    };
+
     tracing::info!(
         "Serving Elysium at '{}'...",
         config.network.address.as_str()
     );
+    // TODO: More config.
     let builder = Server::builder()
+        .tls_config(tls_config)
+        .expect("Failed to build TLS config")
         .layer(InterceptorLayer::new(ConnectInfoInterceptor))
         .layer(GovernorLayer::new(
             GovernorConfigBuilder::default()
