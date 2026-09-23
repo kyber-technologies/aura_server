@@ -78,11 +78,15 @@ impl ServerState {
         diesel::sql_query(
             r#"
             TRUNCATE TABLE
-                messages,
-                channel_members,
+                users,
+                user_follows,
+                user_blocks,
                 channels,
+                channel_members,
+                messages,
                 resources,
-                users
+                posts,
+                post_reactions
             CASCADE
     "#,
         )

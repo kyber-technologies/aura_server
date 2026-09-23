@@ -20,10 +20,10 @@ pub mod serde_duration {
 
         let formatted = if nanos == 0 {
             format!("{secs}s")
-        } else if nanos % 1_000_000 == 0 {
+        } else if nanos.is_multiple_of(1_000_000) {
             let millis = secs * 1_000 + u64::from(nanos / 1_000_000);
             format!("{millis}ms")
-        } else if nanos % 1_000 == 0 {
+        } else if nanos.is_multiple_of(1_000) {
             let micros = secs * 1_000_000 + u64::from(nanos / 1_000);
             format!("{micros}us")
         } else {
