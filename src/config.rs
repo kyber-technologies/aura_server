@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
+use std::time::Duration;
 
-// TODO: Support deserializing duration
 static CONFIG: OnceLock<Config> = OnceLock::new();
 
 pub fn init() {
@@ -61,7 +61,8 @@ pub struct Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeConfig {
     pub max_io_events_per_tick: usize,
-    pub thread_keep_alive: u64,
+    #[serde(with = "crate::utils::serde_duration")]
+    pub thread_keep_alive: Duration,
     pub global_queue_interval: u32,
     pub event_interval: u32,
     pub worker_threads: usize,
@@ -73,7 +74,7 @@ impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
             max_io_events_per_tick: 1024,
-            thread_keep_alive: 10,
+            thread_keep_alive: Duration::from_secs(10),
             global_queue_interval: 31,
             event_interval: 61,
             worker_threads: 4,
@@ -136,12 +137,18 @@ pub struct NetworkConfig {
     pub timeout: u64,
     pub concurrency_limit_per_connection: usize,
     pub max_concurrent_streams: u32,
-    pub max_connection_age: u64,
-    pub max_connection_age_grace: u64,
-    pub http2_keepalive_interval: u64,
-    pub http2_keepalive_timeout: u64,
-    pub tcp_keepalive: u64,
-    pub tcp_keepalive_interval: u64,
+    #[serde(with = "crate::utils::serde_duration")]
+    pub max_connection_age: Duration,
+    #[serde(with = "crate::utils::serde_duration")]
+    pub max_connection_age_grace: Duration,
+    #[serde(with = "crate::utils::serde_duration")]
+    pub http2_keepalive_interval: Duration,
+    #[serde(with = "crate::utils::serde_duration")]
+    pub http2_keepalive_timeout: Duration,
+    #[serde(with = "crate::utils::serde_duration")]
+    pub tcp_keepalive: Duration,
+    #[serde(with = "crate::utils::serde_duration")]
+    pub tcp_keepalive_interval: Duration,
     pub tcp_keepalive_retries: u32,
 }
 
@@ -167,12 +174,12 @@ impl Default for NetworkConfig {
             timeout: 30,
             concurrency_limit_per_connection: 256,
             max_concurrent_streams: 1024,
-            max_connection_age: 600,
-            max_connection_age_grace: 30,
-            http2_keepalive_interval: 30,
-            http2_keepalive_timeout: 10,
-            tcp_keepalive: 60,
-            tcp_keepalive_interval: 10,
+            max_connection_age: Duration::from_secs(600),
+            max_connection_age_grace: Duration::from_secs(30),
+            http2_keepalive_interval: Duration::from_secs(30),
+            http2_keepalive_timeout: Duration::from_secs(10),
+            tcp_keepalive: Duration::from_secs(60),
+            tcp_keepalive_interval: Duration::from_secs(10),
             tcp_keepalive_retries: 3,
         }
     }

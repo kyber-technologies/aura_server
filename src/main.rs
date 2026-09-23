@@ -75,7 +75,7 @@ fn main() {
         .enable_alt_timer()
         .enable_io()
         .max_io_events_per_tick(config.runtime.max_io_events_per_tick)
-        .thread_keep_alive(Duration::from_secs(config.runtime.thread_keep_alive))
+        .thread_keep_alive(config.runtime.thread_keep_alive)
         .global_queue_interval(config.runtime.global_queue_interval)
         .event_interval(config.runtime.event_interval)
         .worker_threads(config.runtime.worker_threads)
@@ -136,25 +136,19 @@ async fn serve(state: ServerState) {
     };
 
     tracing::info!(
-        "Serving Elysium at '{}'...",
+        "Serving Aura gRPC Service at '{}'...",
         config.network.address.as_str()
     );
     let builder = Server::builder()
         .timeout(Duration::from_secs(config.network.timeout))
         .concurrency_limit_per_connection(config.network.concurrency_limit_per_connection)
         .max_concurrent_streams(config.network.max_concurrent_streams)
-        .max_connection_age(Duration::from_secs(config.network.max_connection_age))
-        .max_connection_age_grace(Duration::from_secs(config.network.max_connection_age_grace))
-        .http2_keepalive_interval(Some(Duration::from_secs(
-            config.network.http2_keepalive_interval,
-        )))
-        .http2_keepalive_timeout(Some(Duration::from_secs(
-            config.network.http2_keepalive_timeout,
-        )))
-        .tcp_keepalive(Some(Duration::from_secs(config.network.tcp_keepalive)))
-        .tcp_keepalive_interval(Some(Duration::from_secs(
-            config.network.tcp_keepalive_interval,
-        )))
+        .max_connection_age(config.network.max_connection_age)
+        .max_connection_age_grace(config.network.max_connection_age_grace)
+        .http2_keepalive_interval(Some(config.network.http2_keepalive_interval))
+        .http2_keepalive_timeout(Some(config.network.http2_keepalive_timeout))
+        .tcp_keepalive(Some(config.network.tcp_keepalive))
+        .tcp_keepalive_interval(Some(config.network.tcp_keepalive_interval))
         .tcp_keepalive_retries(Some(config.network.tcp_keepalive_retries))
         .load_shed(true)
         .tcp_nodelay(true)
