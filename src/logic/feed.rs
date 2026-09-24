@@ -92,7 +92,7 @@ pub async fn fetch_candidates(
     let sql = r#"
         WITH
         blocked_users AS (
-            SELECT blocked_id FROM user_blocks WHERE blocker_id = $1
+            SELECT blocked_user_id AS blocked_id FROM user_blocks WHERE user_id = $1
         ),
         direct_follows AS (
             SELECT followed_id
@@ -117,29 +117,31 @@ pub async fn fetch_candidates(
             SELECT p.post_id, 1.5::float8 AS social_weight
             FROM posts p
             JOIN direct_follows df ON p.author_id = df.followed_id
-            WHERE p.created_at >= NOW() - INTERVAL '7 days'
+            WHERE p.timestamp >= NOW() - INTERVAL '7 days'
 
             UNION ALL
 
             SELECT p.post_id, 1.25::float8 AS social_weight
             FROM posts p
             JOIN two_hop_graph th ON p.author_id = th.user_id
-            WHERE p.created_at >= NOW() - INTERVAL '7 days'
+            WHERE p.timestamp >= NOW() - INTERVAL '7 days'
 
             UNION ALL
 
-            SELECT p.post_id, 1.0::float8 AS social_weight
-            FROM posts p
-            WHERE p.embedding IS NOT NULL
-              AND p.author_id NOT IN (SELECT blocked_id FROM blocked_users)
-            ORDER BY p.embedding <=> $2
-            LIMIT 50
+            (
+                SELECT p.post_id, 1.0::float8 AS social_weight
+                FROM posts p
+                WHERE p.embedding IS NOT NULL
+                  AND p.author_id NOT IN (SELECT blocked_id FROM blocked_users)
+                ORDER BY p.embedding <=> $2
+                LIMIT 50
+            )
         )
         SELECT DISTINCT ON (cp.post_id)
             cp.post_id,
             cp.social_weight,
             p.author_id,
-            p.created_at,
+            p.timestamp AS created_at,
             COALESCE(1.0 - (p.embedding <=> $2), 0.0)::float8 AS vector_sim
         FROM candidate_posts cp
         JOIN posts p ON cp.post_id = p.post_id
