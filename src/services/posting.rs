@@ -95,8 +95,7 @@ impl Service {
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
 
-        let posts =
-            posting::get(&mut database, args.post_id.as_slice(), Some(&user.user_id)).await?;
+        let posts = posting::get(&mut database, args.posts.as_slice(), Some(&user.user_id)).await?;
 
         Ok(GetResponse {
             posts: posts
