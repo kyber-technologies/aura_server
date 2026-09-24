@@ -186,14 +186,15 @@ pub const REACT: Command = Command {
 
 pub const FEED: Command = Command {
     name: "feed",
-    description: "Get the feed of a user with limit",
-    usage: "feed [--fetch | -f (fetch and print the posts)] <user_id> <limit>",
+    description: "Get the feed of a user with limit and page index",
+    usage: "feed [--fetch | -f (fetch and print the posts)] <user_id> <limit> <page>",
     execute: |mut args: Arguments,
               state: ServerState|
      -> Pin<Box<dyn Future<Output = Result<(), CommandError>>>> {
         Box::pin(async move {
             let user_id: String = args.free_from_str()?;
             let limit: usize = args.free_from_str()?;
+            let page: usize = args.free_from_str()?;
             let fetch = args.contains(["--fetch", "-f"]);
 
             let mut database = state.database().await?;
@@ -201,7 +202,8 @@ pub const FEED: Command = Command {
             let vector = feed::fetch_user_vector(&mut database, &user_id)
                 .await?
                 .ok_or(Error::not_found("User not found"))?;
-            let post_ids = feed::fetch_feed(&mut database, &user_id, Some(vector), limit).await?;
+            let post_ids =
+                feed::fetch_feed(&mut database, &user_id, Some(vector), limit, page).await?;
 
             if fetch {
                 let mut posts = Vec::with_capacity(post_ids.len());

@@ -16,6 +16,7 @@ pub async fn fetch_feed(
     user_id: &str,
     user_vector: Option<Vector>,
     limit: usize,
+    index: usize,
 ) -> Result<Vec<String>, Error> {
     utils::validate_item_length(limit as u32)?;
 
@@ -73,8 +74,11 @@ pub async fn fetch_feed(
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 
+    let offset = index * limit;
+
     Ok(scored_posts
         .into_iter()
+        .skip(offset)
         .take(limit)
         .map(|p| p.post_id)
         .collect())

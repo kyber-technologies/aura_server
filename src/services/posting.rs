@@ -39,6 +39,7 @@ impl Service {
             &user.user_id,
             user_vector,
             req.limit as usize,
+            req.index as usize,
         )
         .await
         .map_err(|e| Error::internal(format!("Failed fetching feed: {e}")))?;
