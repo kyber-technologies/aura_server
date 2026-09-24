@@ -17,11 +17,20 @@ pub struct ServerState {
 
 impl ServerState {
     pub async fn create() -> Self {
+        let embedder = TextEmbedder::new();
+
+        tracing::info!("Testing text embedder...");
+        // Embed test data to download any missing models
+        embedder
+            .embed(&["test"])
+            .await
+            .expect("Failed to embed test data");
+
         Self {
             database: Database::connect().await,
             emails: Arc::new(EmailRegister::new().await),
             exit: Arc::new(Notify::new()),
-            embedder: TextEmbedder::new(),
+            embedder,
         }
     }
 

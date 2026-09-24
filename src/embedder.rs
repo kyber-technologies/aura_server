@@ -44,6 +44,23 @@ impl TextEmbedder {
         }
     }
 
+    pub async fn embed(&self, texts: &[&str]) -> Result<Vec<Vector>, Error> {
+        if texts.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let owned_texts: Vec<String> = texts.iter().map(|&s| s.to_string()).collect();
+        let (tx, rx) = oneshot::channel();
+
+        self.sender
+            .send((owned_texts, tx))
+            .await
+            .map_err(|_| Error::internal("Embedding worker channel closed"))?;
+
+        rx.await
+            .map_err(|_| Error::internal("Embedding task panicked or dropped"))?
+    }
+
     fn generate_embeddings(texts: &[String]) -> Result<Vec<Vector>, Error> {
         let config = config::get();
 
@@ -61,22 +78,5 @@ impl TextEmbedder {
             .map_err(|err| Error::internal(format!("Failed to embed text: {err}")))?;
 
         Ok(embeddings.into_iter().map(Vector::from).collect())
-    }
-
-    pub async fn embed(&self, texts: &[&str]) -> Result<Vec<Vector>, Error> {
-        if texts.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let owned_texts: Vec<String> = texts.iter().map(|&s| s.to_string()).collect();
-        let (tx, rx) = oneshot::channel();
-
-        self.sender
-            .send((owned_texts, tx))
-            .await
-            .map_err(|_| Error::internal("Embedding worker channel closed"))?;
-
-        rx.await
-            .map_err(|_| Error::internal("Embedding task panicked or dropped"))?
     }
 }

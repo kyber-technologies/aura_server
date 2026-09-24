@@ -7,3 +7,4 @@
 /dev/tls-key.pem
 !/dev/resources/aura/
 !/dev/resources/aura/**
+/.fastembed_cache
