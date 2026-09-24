@@ -3,7 +3,7 @@
 /dev/database
 /dev/resources/*
 /dev/config.toml
-/dev/public-key.pem
-/dev/private-key.pem
+/dev/tls-cert.pem
+/dev/tls-key.pem
 !/dev/resources/aura/
 !/dev/resources/aura/**
