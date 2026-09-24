@@ -101,8 +101,8 @@ impl Service {
         Ok(GetResponse {
             posts: posts
                 .into_iter()
-                .map(|p| p.into_grpc())
-                .collect::<Result<Vec<_>, Error>>()?,
+                .map(|(id, post)| Ok((id, post.into_grpc()?)))
+                .collect::<Result<std::collections::HashMap<_, _>, Error>>()?,
             error: None,
         })
     }
@@ -223,7 +223,7 @@ impl PostingService for Service {
 
     async fn get(&self, request: Request<GetRequest>) -> Result<Response<GetResponse>, Status> {
         let resp = self._get(request).await.unwrap_or_else(|err| GetResponse {
-            posts: Vec::new(),
+            posts: std::collections::HashMap::new(),
             error: Some(err.into()),
         });
 

@@ -67,7 +67,7 @@ pub async fn verify<T>(
             .await?
             .into_iter()
             .next()
-            .map(|user| (user, token.to_string()))
+            .map(|(_, user)| (user, token.to_string()))
             .ok_or(Error::not_found("User not found"))
     } else {
         Err(Error::unauthorized("Missing token"))
@@ -94,7 +94,7 @@ pub async fn auth(
 
     let (key, _) = keys();
 
-    if let Some(user) = user {
+    if let Some((_, user)) = user {
         if verify_hash(password, user.password.clone()) {
             jsonwebtoken::encode(&Header::new(Algorithm::EdDSA), &auth, key)
                 .map(|token| (token, user))

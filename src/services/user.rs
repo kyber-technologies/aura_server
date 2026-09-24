@@ -150,8 +150,8 @@ impl Service {
         Ok(GetResponse {
             users: users
                 .into_iter()
-                .map(|u| u.into_profile().into_grpc())
-                .collect::<Result<Vec<_>, Error>>()?,
+                .map(|(id, user)| Ok((id, user.into_profile().into_grpc()?)))
+                .collect::<Result<std::collections::HashMap<_, _>, Error>>()?,
             error: None,
         })
     }
@@ -297,7 +297,7 @@ impl UserService for Service {
 
     async fn get(&self, request: Request<GetRequest>) -> Result<Response<GetResponse>, Status> {
         let resp = self._get(request).await.unwrap_or_else(|err| GetResponse {
-            users: Vec::new(),
+            users: std::collections::HashMap::new(),
             error: Some(err.into()),
         });
 

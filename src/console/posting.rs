@@ -58,7 +58,7 @@ pub const UNPUBLISH: Command = Command {
 
             let mut database = state.database().await?;
 
-            let post = posting::get(&mut database, slice::from_ref(&post_id), None)
+            let (_, post) = posting::get(&mut database, slice::from_ref(&post_id), None)
                 .await?
                 .into_iter()
                 .next()

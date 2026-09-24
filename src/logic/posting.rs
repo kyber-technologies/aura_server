@@ -122,11 +122,11 @@ pub async fn get(
     database: &mut DatabaseConnection,
     post_ids: &[String],
     requesting_user_id: Option<&str>,
-) -> Result<Vec<Post>, Error> {
+) -> Result<FastMap<String, Post>, Error> {
     utils::validate_item_length(post_ids.len() as u32)?;
 
     if post_ids.is_empty() {
-        return Ok(Vec::new());
+        return Ok(FastMap::default());
     }
 
     let db_posts: Vec<db::Post> = posts::table
@@ -136,7 +136,7 @@ pub async fn get(
         .await?;
 
     if db_posts.is_empty() {
-        return Ok(Vec::new());
+        return Ok(FastMap::default());
     }
 
     if let Some(uid) = requesting_user_id {
@@ -189,30 +189,23 @@ pub async fn get(
         }
     }
 
-    let mut db_posts_map: FastMap<String, db::Post> = db_posts
-        .into_iter()
-        .map(|p| (p.post_id.clone(), p))
-        .collect();
+    let mut result: FastMap<String, Post> = FastMap::default();
+    result.reserve(db_posts.len());
 
-    let mut result = Vec::with_capacity(post_ids.len());
-    for id in post_ids {
-        if let Some(post) = db_posts_map.remove(id) {
-            let counts = reaction_counts_map
-                .remove(&post.post_id)
-                .unwrap_or_default();
-            let user_reaction = user_reactions_map
-                .get(&post.post_id)
-                .cloned()
-                .unwrap_or(PostReaction::None);
+    for post in db_posts {
+        let pid = post.post_id.clone();
+        let counts = reaction_counts_map.remove(&pid).unwrap_or_default();
+        let user_reaction = user_reactions_map
+            .remove(&pid)
+            .unwrap_or(PostReaction::None);
 
-            let post_data = db::PostData {
-                post,
-                reaction_counts: counts,
-                user_reaction,
-            };
+        let post_data = db::PostData {
+            post,
+            reaction_counts: counts,
+            user_reaction,
+        };
 
-            result.push(Post::from_db(post_data)?);
-        }
+        result.insert(pid, Post::from_db(post_data)?);
     }
 
     Ok(result)

@@ -72,7 +72,7 @@ pub async fn create(database: &mut DatabaseConnection, user: User) -> Result<(),
             user_id: user.user_id.clone(),
         },
     )
-    .await?;
+        .await?;
 
     resource::write(icon_id, tokio_stream::iter(chunks)).await?;
 
@@ -109,11 +109,11 @@ pub async fn update(database: &mut DatabaseConnection, user: User) -> Result<(),
 pub async fn get(
     database: &mut DatabaseConnection,
     user_ids: &[String],
-) -> Result<Vec<User>, Error> {
+) -> Result<FastMap<String, User>, Error> {
     utils::validate_item_length(user_ids.len() as u32)?;
 
     if user_ids.is_empty() {
-        return Ok(Vec::new());
+        return Ok(FastMap::default());
     }
 
     let user_rows = users::table
@@ -123,7 +123,7 @@ pub async fn get(
         .await?;
 
     if user_rows.is_empty() {
-        return Ok(Vec::new());
+        return Ok(FastMap::default());
     }
 
     let found_user_ids: Vec<&str> = user_rows.iter().map(|u| u.user_id.as_str()).collect();
@@ -195,7 +195,8 @@ pub async fn get(
         following_map.entry(follower).or_default().push(followed);
     }
 
-    let mut result = Vec::with_capacity(user_rows.len());
+    let mut result: FastMap<String, User> = FastMap::default();
+    result.reserve(user_rows.len());
 
     for user in user_rows {
         let uid = user.user_id.clone();
@@ -207,7 +208,7 @@ pub async fn get(
             following: following_map.remove(&uid).unwrap_or_default(),
         };
 
-        result.push(User::from_db(data)?);
+        result.insert(uid, User::from_db(data)?);
     }
 
     Ok(result)
@@ -302,8 +303,8 @@ pub async fn block(
                 .filter(user_blocks::user_id.eq(user_id))
                 .filter(user_blocks::blocked_user_id.eq(block_user_id)),
         )
-        .execute(database)
-        .await?;
+            .execute(database)
+            .await?;
     }
 
     Ok(())
@@ -331,7 +332,7 @@ pub async fn is_blocked_by(
 pub async fn push_notifications(
     database: &mut DatabaseConnection,
     user_id: &str,
-    new_notifications: impl IntoIterator<Item = Notification>,
+    new_notifications: impl IntoIterator<Item=Notification>,
 ) -> Result<(), Error> {
     let config = config::get();
     let now = Timestamp::now();
@@ -420,8 +421,8 @@ pub async fn unfollow(
             .filter(user_follows::follower_id.eq(follower_id))
             .filter(user_follows::followed_id.eq(followed_id)),
     )
-    .execute(database)
-    .await?;
+        .execute(database)
+        .await?;
 
     Ok(())
 }
@@ -459,7 +460,7 @@ pub async fn create_admin(database: &mut DatabaseConnection) -> Result<(), Error
                 following: Vec::new(),
             },
         )
-        .await?;
+            .await?;
 
         tracing::info!(
             "Created setup administrator 'admin' with password 'admin'. Please change this immediately!"
