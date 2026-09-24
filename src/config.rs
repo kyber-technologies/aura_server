@@ -243,7 +243,7 @@ impl Default for EmailConfig {
             }
             .to_string(),
             verify_token_len: 6,
-            relay: cfg!(debug_assertions),
+            relay: !cfg!(debug_assertions),
             exp: 3600,
             no_reply_mail: "no-reply@aura.social".to_string(),
             email_code_tmp: "assets/email_code_tmp.html".to_string(),
