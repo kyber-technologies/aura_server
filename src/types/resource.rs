@@ -2,6 +2,7 @@ use crate::database::resource as db;
 use crate::error::Error;
 use crate::types::common::Timestamp;
 use crate::types::{DatabaseDomainType, FastMap, GrpcDomainType, JsonDatabaseDomainType};
+use crate::utils::HashMapExt;
 use aura_rust::resource::v1 as grpc;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -217,7 +218,7 @@ impl GrpcDomainType for ResourceMeta {
                     .ok_or(Error::invalid_format("Timestamp not provided"))?,
             )?,
             name: value.name,
-            metadata: value.metadata.into_iter().collect(),
+            metadata: value.metadata.convert(),
         })
     }
 
@@ -226,7 +227,7 @@ impl GrpcDomainType for ResourceMeta {
             size: self.size as i32,
             timestamp: Some(self.timestamp.into_grpc()?),
             name: self.name,
-            metadata: self.metadata.into_iter().collect(),
+            metadata: self.metadata.convert(),
         })
     }
 }

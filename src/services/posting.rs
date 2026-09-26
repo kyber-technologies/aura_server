@@ -6,7 +6,7 @@ use crate::types::GrpcDomainType;
 use crate::types::common::Timestamp;
 use crate::types::posting::{Post, PostReaction};
 use crate::types::resource::Content;
-use crate::utils::generate_unique_id;
+use crate::utils::{HashMapExt, generate_unique_id};
 use aura_rust::posting::v1::posting_service_server::PostingService;
 use aura_rust::posting::v1::{
     FeedRequest, FeedResponse, GetOfRequest, GetOfResponse, GetRequest, GetResponse,
@@ -99,10 +99,7 @@ impl Service {
         let posts = posting::get(&mut database, args.posts.as_slice(), Some(&user.user_id)).await?;
 
         Ok(GetResponse {
-            posts: posts
-                .into_iter()
-                .map(|(id, post)| Ok((id, post.into_grpc()?)))
-                .collect::<Result<std::collections::HashMap<_, _>, Error>>()?,
+            posts: posts.map_convert(|id, post| Ok((id, post.into_grpc()?)))?,
             error: None,
         })
     }

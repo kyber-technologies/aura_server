@@ -3,6 +3,7 @@ use crate::error::Error;
 use crate::types::common::Timestamp;
 use crate::types::resource::Content;
 use crate::types::{DatabaseDomainType, FastMap, GrpcDomainType};
+use crate::utils::HashMapExt;
 use aura_rust::posting::v1 as grpc;
 use diesel_derive_enum::DbEnum;
 
@@ -37,19 +38,15 @@ impl GrpcDomainType for Post {
                     .ok_or(Error::invalid_format("Timestamp not provided"))?,
             )?,
             parent: value.parent,
-            reactions: value
-                .reactions
-                .into_iter()
-                .map(|(r, i)| {
-                    Ok((
-                        PostReaction::from_grpc(
-                            grpc::PostReaction::from_str_name(&r)
-                                .ok_or(Error::invalid_format("Invalid post reaction"))?,
-                        )?,
-                        i,
-                    ))
-                })
-                .collect::<Result<FastMap<PostReaction, u32>, Error>>()?,
+            reactions: value.reactions.map_convert(|r, c| {
+                Ok((
+                    PostReaction::from_grpc(
+                        grpc::PostReaction::from_str_name(&r)
+                            .ok_or(Error::invalid_format("Invalid post reaction"))?,
+                    )?,
+                    c,
+                ))
+            })?,
             reaction: PostReaction::from_grpc(reaction)?,
         })
     }
@@ -63,9 +60,7 @@ impl GrpcDomainType for Post {
             parent: self.parent,
             reactions: self
                 .reactions
-                .into_iter()
-                .map(|(r, i)| Ok((r.into_grpc()?.as_str_name().to_owned(), i)))
-                .collect::<Result<std::collections::HashMap<String, u32>, Error>>()?,
+                .map_convert(|r, c| Ok((r.into_grpc()?.as_str_name().to_owned(), c)))?,
             reaction: self.reaction.into_grpc()? as i32,
         })
     }

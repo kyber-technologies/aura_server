@@ -1,5 +1,7 @@
 use crate::config;
 use crate::error::Error;
+use std::collections::HashMap;
+use std::hash::{BuildHasher, Hash};
 use std::ops::{Deref, DerefMut};
 use tonic::Streaming;
 use tonic::codegen::tokio_stream::StreamExt;
@@ -67,6 +69,10 @@ pub mod serde_duration {
     }
 }
 
+pub fn generate_unique_id() -> String {
+    nanoid::format(nanoid::rngs::default, &nanoid::alphabet::SAFE, 16)
+}
+
 pub fn validate_item_length(length: u32) -> Result<(), Error> {
     let limit = config::get().service.item_request_limit;
 
@@ -123,10 +129,47 @@ impl<T> DerefMut for SafeStreaming<T> {
     }
 }
 
-/// Generated a new unique ID with length 16.
-///
-/// If 1000 Unique IDs would be generated every second,
-/// it would take ~1000 years to have a 1% chance of a collision.
-pub fn generate_unique_id() -> String {
-    nanoid::format(nanoid::rngs::default, &nanoid::alphabet::SAFE, 16)
+pub trait HashMapExt<K, V, S>
+where
+    K: Eq + Hash,
+    S: BuildHasher + Default,
+{
+    fn convert<S2>(self) -> HashMap<K, V, S2>
+    where
+        S2: BuildHasher + Default;
+
+    fn map_convert<K2, V2, S2, F>(self, f: F) -> Result<HashMap<K2, V2, S2>, Error>
+    where
+        K2: Eq + Hash,
+        S2: BuildHasher + Default,
+        F: FnMut(K, V) -> Result<(K2, V2), Error>;
+}
+
+impl<K: Eq + Hash, V, S: BuildHasher + Default> HashMapExt<K, V, S> for HashMap<K, V, S> {
+    fn convert<S2>(self) -> HashMap<K, V, S2>
+    where
+        S2: BuildHasher + Default,
+    {
+        let mut destination = HashMap::with_capacity_and_hasher(self.len(), S2::default());
+
+        destination.extend(self);
+
+        destination
+    }
+
+    fn map_convert<K2, V2, S2, F>(self, mut f: F) -> Result<HashMap<K2, V2, S2>, Error>
+    where
+        K2: Eq + Hash,
+        S2: BuildHasher + Default,
+        F: FnMut(K, V) -> Result<(K2, V2), Error>,
+    {
+        let mut destination = HashMap::with_capacity_and_hasher(self.len(), S2::default());
+
+        for (k, v) in self {
+            let (new_k, new_v) = f(k, v)?;
+            destination.insert(new_k, new_v);
+        }
+
+        Ok(destination)
+    }
 }

@@ -4,6 +4,7 @@ use crate::error::Error;
 use crate::types::common::Timestamp;
 use crate::types::resource::Content;
 use crate::types::{DatabaseDomainType, FastMap, GrpcDomainType};
+use crate::utils::HashMapExt;
 use aura_rust::chat::v1 as grpc;
 use diesel_derive_enum::DbEnum;
 use serde::{Deserialize, Serialize};
@@ -47,9 +48,7 @@ impl GrpcDomainType for Channel {
             description: self.description,
             members: self
                 .members
-                .into_iter()
-                .map(|(k, v)| Ok((k, v.into_grpc()?.into())))
-                .collect::<Result<std::collections::HashMap<_, _>, Error>>()?,
+                .map_convert(|u, p| Ok((u, p.into_grpc()?.into())))?,
         })
     }
 }

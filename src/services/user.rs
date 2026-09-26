@@ -6,6 +6,7 @@ use crate::types::GrpcDomainType;
 use crate::types::common::Timestamp;
 use crate::types::resource::ResourceId;
 use crate::types::user::{Notifications, User, UserRole};
+use crate::utils::HashMapExt;
 use aura_rust::common::v1::ErrorCode;
 use aura_rust::user::v1::user_service_server::UserService;
 use aura_rust::user::v1::{
@@ -148,10 +149,7 @@ impl Service {
         let users = user::get(&mut database, &user).await?;
 
         Ok(GetResponse {
-            users: users
-                .into_iter()
-                .map(|(id, user)| Ok((id, user.into_profile().into_grpc()?)))
-                .collect::<Result<std::collections::HashMap<_, _>, Error>>()?,
+            users: users.map_convert(|id, user| Ok((id, user.into_profile().into_grpc()?)))?,
             error: None,
         })
     }
