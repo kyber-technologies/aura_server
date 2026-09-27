@@ -6,24 +6,18 @@ CREATE TYPE channel_permission AS ENUM (
 
 CREATE TABLE channels
 (
-    channel_id  TEXT PRIMARY KEY,
+    channel_id  BIGINT PRIMARY KEY,
     name        TEXT NOT NULL,
     description TEXT NOT NULL
 );
 
 CREATE TABLE channel_members
 (
-    channel_id TEXT               NOT NULL,
-    user_id    TEXT               NOT NULL,
+    channel_id BIGINT             NOT NULL REFERENCES channels (channel_id) ON DELETE CASCADE,
+    user_id    TEXT               NOT NULL REFERENCES users (user_id) ON DELETE CASCADE,
     permission channel_permission NOT NULL,
 
-    PRIMARY KEY (channel_id, user_id),
-
-    FOREIGN KEY (channel_id)
-        REFERENCES channels (channel_id)
-        ON DELETE CASCADE,
-
-    FOREIGN KEY (user_id)
-        REFERENCES users (user_id)
-        ON DELETE CASCADE
+    PRIMARY KEY (channel_id, user_id)
 );
+
+CREATE INDEX idx_channel_members_user_id ON channel_members (user_id);

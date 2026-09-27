@@ -1,7 +1,9 @@
 use crate::schema::{post_reactions, posts};
+use crate::types::UniqueId;
 use crate::types::posting::PostReaction;
 use chrono::{DateTime, Utc};
 use diesel::pg::sql_types::Timestamptz;
+use diesel::sql_types::BigInt;
 use diesel::sql_types::Double;
 use diesel::sql_types::Text;
 use diesel::{Insertable, Queryable, QueryableByName, Selectable};
@@ -12,11 +14,11 @@ use serde_json::Value;
 #[diesel(table_name = posts)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Post {
-    pub post_id: String,
+    pub post_id: UniqueId,
     pub author_id: String,
     pub content: Value,
     pub timestamp: DateTime<Utc>,
-    pub parent_id: Option<String>,
+    pub parent_id: Option<UniqueId>,
     pub embedding: Option<Vector>,
 }
 
@@ -24,7 +26,7 @@ pub struct Post {
 #[diesel(table_name = post_reactions)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct PostReactionRow {
-    pub post_id: String,
+    pub post_id: UniqueId,
     pub user_id: String,
     pub reaction: PostReaction,
 }
@@ -38,8 +40,8 @@ pub struct PostData {
 
 #[derive(Clone, Debug, QueryableByName)]
 pub struct FeedCandidateRow {
-    #[diesel(sql_type = Text)]
-    pub post_id: String,
+    #[diesel(sql_type = BigInt)]
+    pub post_id: UniqueId,
     #[diesel(sql_type = Double)]
     pub social_weight: f64,
     #[diesel(sql_type = Text)]

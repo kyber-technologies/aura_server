@@ -2,11 +2,10 @@ use crate::console::{Command, CommandError};
 use crate::error::Error;
 use crate::logic::{feed, posting};
 use crate::state::ServerState;
-use crate::types::FastMap;
 use crate::types::common::Timestamp;
 use crate::types::posting::{Post, PostReaction};
 use crate::types::resource::Content;
-use crate::utils::generate_unique_id;
+use crate::types::{FastMap, UniqueId};
 use chrono::DateTime;
 use no_pico_args::Arguments;
 use std::pin::Pin;
@@ -22,7 +21,7 @@ pub const PUBLISH: Command = Command {
         Box::pin(async move {
             let user_id: String = args.free_from_str()?;
             let content: String = args.free_from_str()?;
-            let parent: Option<String> = args.opt_value_from_str(["--parent", "-p"])?;
+            let parent: Option<UniqueId> = args.opt_value_from_str(["--parent", "-p"])?;
 
             let mut database = state.database().await?;
 
@@ -30,7 +29,7 @@ pub const PUBLISH: Command = Command {
                 &mut database,
                 state.embedder(),
                 Post {
-                    post_id: generate_unique_id(),
+                    post_id: state.id_factory().next_id()?,
                     author_id: user_id,
                     content: Content::Text(content),
                     timestamp: Timestamp::now(),
@@ -54,7 +53,7 @@ pub const UNPUBLISH: Command = Command {
               state: ServerState|
      -> Pin<Box<dyn Future<Output = Result<(), CommandError>>>> {
         Box::pin(async move {
-            let post_id: String = args.free_from_str()?;
+            let post_id: UniqueId = args.free_from_str()?;
 
             let mut database = state.database().await?;
 
@@ -64,7 +63,7 @@ pub const UNPUBLISH: Command = Command {
                 .next()
                 .ok_or(Error::not_found("Post not found"))?;
 
-            posting::delete(&mut database, &post_id, &post.author_id).await?;
+            posting::delete(&mut database, post_id, &post.author_id).await?;
 
             tracing::info!("Unpublished post '{post_id}'.");
 
@@ -81,7 +80,7 @@ pub const GET: Command = Command {
               state: ServerState|
      -> Pin<Box<dyn Future<Output = Result<(), CommandError>>>> {
         Box::pin(async move {
-            let post_id: String = args.free_from_str()?;
+            let post_id: UniqueId = args.free_from_str()?;
 
             let mut database = state.database().await?;
 
@@ -165,7 +164,7 @@ pub const REACT: Command = Command {
      -> Pin<Box<dyn Future<Output = Result<(), CommandError>>>> {
         Box::pin(async move {
             let user_id: String = args.free_from_str()?;
-            let post_id: String = args.free_from_str()?;
+            let post_id: UniqueId = args.free_from_str()?;
             let reaction: PostReaction = args.free_from_fn(|s| match s {
                 "like" => Ok(PostReaction::Like),
                 "dislike" => Ok(PostReaction::Dislike),
@@ -177,7 +176,7 @@ pub const REACT: Command = Command {
 
             let mut database = state.database().await?;
 
-            posting::react(&mut database, &post_id, &user_id, reaction).await?;
+            posting::react(&mut database, post_id, &user_id, reaction).await?;
 
             Ok(())
         })

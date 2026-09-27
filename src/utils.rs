@@ -2,6 +2,7 @@ use crate::config;
 use crate::error::Error;
 use std::collections::HashMap;
 use std::hash::{BuildHasher, Hash};
+use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
 use tonic::Streaming;
 use tonic::codegen::tokio_stream::StreamExt;
@@ -69,10 +70,6 @@ pub mod serde_duration {
     }
 }
 
-pub fn generate_unique_id() -> String {
-    nanoid::format(nanoid::rngs::default, &nanoid::alphabet::SAFE, 16)
-}
-
 pub fn validate_item_length(length: u32) -> Result<(), Error> {
     let limit = config::get().service.item_request_limit;
 
@@ -129,7 +126,7 @@ impl<T> DerefMut for SafeStreaming<T> {
     }
 }
 
-pub trait HashMapExt<K, V, S>
+pub trait ConvertHashMap<K, V, S>
 where
     K: Eq + Hash,
     S: BuildHasher + Default,
@@ -145,7 +142,7 @@ where
         F: FnMut(K, V) -> Result<(K2, V2), Error>;
 }
 
-impl<K: Eq + Hash, V, S: BuildHasher + Default> HashMapExt<K, V, S> for HashMap<K, V, S> {
+impl<K: Eq + Hash, V, S: BuildHasher + Default> ConvertHashMap<K, V, S> for HashMap<K, V, S> {
     fn convert<S2>(self) -> HashMap<K, V, S2>
     where
         S2: BuildHasher + Default,
@@ -171,5 +168,56 @@ impl<K: Eq + Hash, V, S: BuildHasher + Default> HashMapExt<K, V, S> for HashMap<
         }
 
         Ok(destination)
+    }
+}
+
+/// Transmute a vector of one type to another type with the same size and alignment.
+///
+/// # Safety
+///
+/// The types must have the same size, alignment and representation in memory.
+///
+/// Only implemented for `Vec<i64>` (`Item = u64`) and `Vec<u64>` (`Item = i64`).
+pub unsafe trait TransmuteVec {
+    type Item;
+
+    fn transmute_vec(self) -> Vec<Self::Item>;
+}
+
+unsafe impl TransmuteVec for Vec<u64> {
+    type Item = i64;
+
+    #[inline]
+    fn transmute_vec(self) -> Vec<Self::Item> {
+        debug_assert_eq!(size_of::<u64>(), size_of::<Self::Item>());
+        debug_assert_eq!(align_of::<u64>(), align_of::<Self::Item>());
+
+        let mut manual = ManuallyDrop::new(self);
+
+        let ptr = manual.as_mut_ptr() as *mut Self::Item;
+        let len = manual.len();
+        let cap = manual.capacity();
+
+        // SAFETY: u64 and i64 have identical size, alignment, and capacity requirements.
+        unsafe { Vec::from_raw_parts(ptr, len, cap) }
+    }
+}
+
+unsafe impl TransmuteVec for Vec<i64> {
+    type Item = u64;
+
+    #[inline]
+    fn transmute_vec(self) -> Vec<Self::Item> {
+        debug_assert_eq!(size_of::<i64>(), size_of::<Self::Item>());
+        debug_assert_eq!(align_of::<i64>(), align_of::<Self::Item>());
+
+        let mut manual = ManuallyDrop::new(self);
+
+        let ptr = manual.as_mut_ptr() as *mut Self::Item;
+        let len = manual.len();
+        let cap = manual.capacity();
+
+        // SAFETY: u64 and i64 have identical size, alignment, and capacity requirements.
+        unsafe { Vec::from_raw_parts(ptr, len, cap) }
     }
 }

@@ -1,13 +1,13 @@
-use crate::database::DatabaseConnection;
 use crate::database::posting as db;
-use crate::embedder::TextEmbedder;
 use crate::error::Error;
 use crate::logic::feed::PostInteraction;
 use crate::logic::{feed, user};
 use crate::schema::{post_reactions, posts, user_blocks};
+use crate::state::database::DatabaseConnection;
+use crate::state::embedder::TextEmbedder;
 use crate::types::common::Timestamp;
 use crate::types::posting::{Post, PostReaction};
-use crate::types::{DatabaseDomainType, FastMap, FastSet};
+use crate::types::{DatabaseDomainType, FastMap, FastSet, UniqueId};
 use crate::utils;
 use crate::utils::escape_like_pattern;
 use diesel::{
@@ -25,7 +25,7 @@ pub async fn create(
         .transaction(async |database| {
             let parent_vector: Option<Vector> = if let Some(ref parent_id) = post.parent {
                 let parent_vec_opt: Option<Option<Vector>> = posts::table
-                    .filter(posts::post_id.eq(&**parent_id))
+                    .filter(posts::post_id.eq(*parent_id as UniqueId))
                     .select(posts::embedding)
                     .first::<Option<Vector>>(database)
                     .await
@@ -94,7 +94,7 @@ pub async fn create(
 
 pub async fn delete(
     database: &mut DatabaseConnection,
-    post_id: &str,
+    post_id: UniqueId,
     user_id: &str,
 ) -> Result<(), Error> {
     let author = posts::table
@@ -120,9 +120,9 @@ pub async fn delete(
 
 pub async fn get(
     database: &mut DatabaseConnection,
-    post_ids: &[String],
+    post_ids: &[UniqueId],
     requesting_user_id: Option<&str>,
-) -> Result<FastMap<String, Post>, Error> {
+) -> Result<FastMap<UniqueId, Post>, Error> {
     utils::validate_item_length(post_ids.len() as u32)?;
 
     if post_ids.is_empty() {
@@ -154,9 +154,9 @@ pub async fn get(
         }
     }
 
-    let found_post_ids: Vec<&str> = db_posts.iter().map(|p| p.post_id.as_str()).collect();
+    let found_post_ids: Vec<UniqueId> = db_posts.iter().map(|p| p.post_id).collect();
 
-    let raw_counts: Vec<(String, PostReaction, i64)> = post_reactions::table
+    let raw_counts: Vec<(UniqueId, PostReaction, i64)> = post_reactions::table
         .filter(post_reactions::post_id.eq_any(&found_post_ids))
         .group_by((post_reactions::post_id, post_reactions::reaction))
         .select((
@@ -167,7 +167,7 @@ pub async fn get(
         .load(database)
         .await?;
 
-    let mut reaction_counts_map: FastMap<String, Vec<(PostReaction, i64)>> = FastMap::default();
+    let mut reaction_counts_map: FastMap<UniqueId, Vec<(PostReaction, i64)>> = FastMap::default();
     for (pid, reaction, count) in raw_counts {
         reaction_counts_map
             .entry(pid)
@@ -175,9 +175,9 @@ pub async fn get(
             .push((reaction, count));
     }
 
-    let mut user_reactions_map: FastMap<String, PostReaction> = FastMap::default();
+    let mut user_reactions_map: FastMap<UniqueId, PostReaction> = FastMap::default();
     if let Some(uid) = requesting_user_id {
-        let user_reactions: Vec<(String, PostReaction)> = post_reactions::table
+        let user_reactions: Vec<(UniqueId, PostReaction)> = post_reactions::table
             .filter(post_reactions::post_id.eq_any(&found_post_ids))
             .filter(post_reactions::user_id.eq(uid))
             .select((post_reactions::post_id, post_reactions::reaction))
@@ -189,11 +189,11 @@ pub async fn get(
         }
     }
 
-    let mut result: FastMap<String, Post> = FastMap::default();
+    let mut result: FastMap<UniqueId, Post> = FastMap::default();
     result.reserve(db_posts.len());
 
     for post in db_posts {
-        let pid = post.post_id.clone();
+        let pid = post.post_id;
         let counts = reaction_counts_map.remove(&pid).unwrap_or_default();
         let user_reaction = user_reactions_map
             .remove(&pid)
@@ -283,7 +283,7 @@ pub async fn search(
 
 pub async fn react(
     database: &mut DatabaseConnection,
-    post_id: &str,
+    post_id: UniqueId,
     user_id: &str,
     reaction: PostReaction,
 ) -> Result<(), Error> {
@@ -319,7 +319,7 @@ pub async fn react(
                 .await?;
             } else {
                 let reaction_row = db::PostReactionRow {
-                    post_id: post_id.to_string(),
+                    post_id,
                     user_id: user_id.to_string(),
                     reaction,
                 };
@@ -369,9 +369,9 @@ async fn hydrate(
         return Ok(Vec::new());
     }
 
-    let post_ids: Vec<String> = raw_posts.iter().map(|p| p.post_id.clone()).collect();
+    let post_ids: Vec<UniqueId> = raw_posts.iter().map(|p| p.post_id).collect();
 
-    let raw_reactions: Vec<(String, PostReaction, i64)> = post_reactions::table
+    let raw_reactions: Vec<(UniqueId, PostReaction, i64)> = post_reactions::table
         .filter(post_reactions::post_id.eq_any(&post_ids))
         .group_by((post_reactions::post_id, post_reactions::reaction))
         .select((
@@ -382,12 +382,12 @@ async fn hydrate(
         .load(database)
         .await?;
 
-    let user_reactions: FastMap<String, PostReaction> = if let Some(uid) = requesting_user_id {
+    let user_reactions: FastMap<UniqueId, PostReaction> = if let Some(uid) = requesting_user_id {
         post_reactions::table
             .filter(post_reactions::post_id.eq_any(&post_ids))
             .filter(post_reactions::user_id.eq(uid))
             .select((post_reactions::post_id, post_reactions::reaction))
-            .load::<(String, PostReaction)>(database)
+            .load::<(UniqueId, PostReaction)>(database)
             .await?
             .into_iter()
             .collect()
@@ -395,14 +395,14 @@ async fn hydrate(
         FastMap::default()
     };
 
-    let mut counts_map: FastMap<String, Vec<(PostReaction, i64)>> = FastMap::default();
+    let mut counts_map: FastMap<UniqueId, Vec<(PostReaction, i64)>> = FastMap::default();
     for (pid, reaction, count) in raw_reactions {
         counts_map.entry(pid).or_default().push((reaction, count));
     }
 
     let mut domain_posts = Vec::with_capacity(raw_posts.len());
     for raw_post in raw_posts {
-        let pid = raw_post.post_id.clone();
+        let pid = raw_post.post_id;
         let reaction_counts = counts_map.remove(&pid).unwrap_or_default();
         let user_reaction = user_reactions
             .get(&pid)

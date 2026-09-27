@@ -1,9 +1,9 @@
-use crate::database::DatabaseConnection;
 use crate::database::posting::FeedCandidateRow;
 use crate::error::Error;
 use crate::schema::{post_reactions, posts, users};
-use crate::types::FastMap;
+use crate::state::database::DatabaseConnection;
 use crate::types::posting::PostReaction;
+use crate::types::{FastMap, UniqueId};
 use crate::utils;
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
@@ -17,7 +17,7 @@ pub async fn fetch_feed(
     user_vector: Option<Vector>,
     limit: usize,
     index: usize,
-) -> Result<Vec<String>, Error> {
+) -> Result<Vec<UniqueId>, Error> {
     utils::validate_item_length(limit as u32)?;
 
     let now = Utc::now();
@@ -162,15 +162,15 @@ pub async fn fetch_candidates(
         return Ok(Vec::new());
     }
 
-    let candidate_ids: Vec<String> = raw_rows.iter().map(|r| r.post_id.clone()).collect();
+    let candidate_ids: Vec<UniqueId> = raw_rows.iter().map(|r| r.post_id).collect();
 
     let reactions = post_reactions::table
         .filter(post_reactions::post_id.eq_any(&candidate_ids))
         .select((post_reactions::post_id, post_reactions::reaction))
-        .load::<(String, PostReaction)>(database)
+        .load::<(UniqueId, PostReaction)>(database)
         .await?;
 
-    let mut reaction_counts: FastMap<String, (i64, i64)> = FastMap::default();
+    let mut reaction_counts: FastMap<UniqueId, (i64, i64)> = FastMap::default();
 
     for (post_id, reaction) in reactions {
         let entry = reaction_counts.entry(post_id).or_insert((0, 0));
@@ -305,7 +305,7 @@ pub async fn update_user_vector(
 }
 
 pub struct FeedCandidate {
-    pub post_id: String,
+    pub post_id: UniqueId,
     pub created_at: DateTime<Utc>,
     pub social_weight: f32,
     pub vector_sim: f32,
@@ -315,7 +315,7 @@ pub struct FeedCandidate {
 }
 
 pub struct ScoredPost {
-    pub post_id: String,
+    pub post_id: UniqueId,
     pub score: f32,
 }
 

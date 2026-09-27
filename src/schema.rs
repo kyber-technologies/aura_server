@@ -24,7 +24,7 @@ diesel::table! {
     use super::sql_types::ChannelPermission;
 
     channel_members (channel_id, user_id) {
-        channel_id -> Text,
+        channel_id -> Int8,
         user_id -> Text,
         permission -> ChannelPermission,
     }
@@ -35,7 +35,7 @@ diesel::table! {
     use pgvector::sql_types::*;
 
     channels (channel_id) {
-        channel_id -> Text,
+        channel_id -> Int8,
         name -> Text,
         description -> Text,
     }
@@ -46,8 +46,8 @@ diesel::table! {
     use pgvector::sql_types::*;
 
     messages (message_id) {
-        message_id -> Text,
-        channel_id -> Text,
+        message_id -> Int8,
+        channel_id -> Int8,
         user_id -> Text,
         content -> Jsonb,
         created_at -> Timestamptz,
@@ -60,7 +60,7 @@ diesel::table! {
     use super::sql_types::PostReaction;
 
     post_reactions (post_id, user_id) {
-        post_id -> Text,
+        post_id -> Int8,
         user_id -> Text,
         reaction -> PostReaction,
     }
@@ -71,11 +71,11 @@ diesel::table! {
     use pgvector::sql_types::*;
 
     posts (post_id) {
-        post_id -> Text,
+        post_id -> Int8,
         author_id -> Text,
         content -> Jsonb,
         timestamp -> Timestamptz,
-        parent_id -> Nullable<Text>,
+        parent_id -> Nullable<Int8>,
         embedding -> Nullable<Vector>,
     }
 }

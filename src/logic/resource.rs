@@ -1,9 +1,9 @@
-use crate::database::DatabaseConnection;
 use crate::database::resource as db;
 use crate::database::resource::ResourceNamespaceType;
 use crate::error::Error;
 use crate::logic::chat;
 use crate::schema::resources;
+use crate::state::database::DatabaseConnection;
 use crate::types::DatabaseDomainType;
 use crate::types::resource::{ResourceDescriptor, ResourceId, ResourceNamespace};
 use crate::{config, utils};
@@ -116,11 +116,18 @@ pub async fn is_download_authorized(
     Ok(match &desc.resource_id.namespace {
         ResourceNamespace::Aura => true,
         ResourceNamespace::UserIcon => true,
-        ResourceNamespace::Channel(channel_id) => chat::get_channel(database, channel_id)
-            .await?
-            .ok_or(Error::not_found("Channel not found"))?
-            .members
-            .contains_key(user),
+        ResourceNamespace::Channel(channel_id) => chat::get_channel(
+            database,
+            channel_id.parse().map_err(|err| {
+                Error::internal(format!(
+                    "Failed to parse channel ID from resource namespace: {err}"
+                ))
+            })?,
+        )
+        .await?
+        .ok_or(Error::not_found("Channel not found"))?
+        .members
+        .contains_key(user),
     })
 }
 
@@ -132,11 +139,17 @@ pub async fn is_upload_authorized(
     Ok(match &desc.resource_id.namespace {
         ResourceNamespace::Aura => false,
         ResourceNamespace::UserIcon => desc.resource_id.key == user_id,
-        ResourceNamespace::Channel(channel_id) => {
-            chat::get_channel_member_perm(database, channel_id, user_id)
-                .await?
-                .is_write_authorized()
-        }
+        ResourceNamespace::Channel(channel_id) => chat::get_channel_member_perm(
+            database,
+            channel_id.parse().map_err(|err| {
+                Error::internal(format!(
+                    "Failed to parse channel ID from resource namespace: {err}"
+                ))
+            })?,
+            user_id,
+        )
+        .await?
+        .is_write_authorized(),
     })
 }
 

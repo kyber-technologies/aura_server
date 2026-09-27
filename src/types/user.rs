@@ -3,7 +3,7 @@ use crate::error::Error;
 use crate::types::chat::{Channel, Message};
 use crate::types::common::Timestamp;
 use crate::types::resource::ResourceId;
-use crate::types::{DatabaseDomainType, GrpcDomainType, JsonDatabaseDomainType};
+use crate::types::{DatabaseDomainType, GrpcDomainType, JsonDatabaseDomainType, UniqueId};
 use aura_rust::user::v1 as grpc;
 use diesel_derive_enum::DbEnum;
 use serde::{Deserialize, Serialize};
@@ -221,16 +221,16 @@ impl JsonDatabaseDomainType for Notifications {}
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Notification {
     Invite {
-        notification_id: String,
+        notification_id: UniqueId,
         timestamp: Timestamp,
-        channel_id: String,
+        channel_id: UniqueId,
         invited_by: String,
         uninvited: bool,
     },
     Message {
-        notification_id: String,
+        notification_id: UniqueId,
         timestamp: Timestamp,
-        channel_id: String,
+        channel_id: UniqueId,
         sender_id: String,
         message: Message,
     },
@@ -254,24 +254,24 @@ impl GrpcDomainType for Notification {
             .ok_or(Error::invalid_format("Notification not provided"))?
         {
             grpc::notification::Notification::Invite(not) => Ok(Self::Invite {
-                notification_id: value.notification_id,
+                notification_id: value.notification_id as UniqueId,
                 timestamp: Timestamp::from_grpc(
                     value
                         .timestamp
                         .ok_or(Error::invalid_format("Timestamp not provided"))?,
                 )?,
-                channel_id: not.channel_id,
+                channel_id: not.channel_id as UniqueId,
                 invited_by: not.invited_by,
                 uninvited: not.uninvited,
             }),
             grpc::notification::Notification::Message(not) => Ok(Self::Message {
-                notification_id: value.notification_id,
+                notification_id: value.notification_id as UniqueId,
                 timestamp: Timestamp::from_grpc(
                     value
                         .timestamp
                         .ok_or(Error::invalid_format("Timestamp not provided"))?,
                 )?,
-                channel_id: not.channel_id,
+                channel_id: not.channel_id as UniqueId,
                 sender_id: not.sender_id,
                 message: Message::from_grpc(
                     not.message
@@ -290,11 +290,11 @@ impl GrpcDomainType for Notification {
                 invited_by,
                 uninvited,
             } => Ok(grpc::Notification {
-                notification_id,
+                notification_id: notification_id as u64,
                 timestamp: Some(timestamp.into_grpc()?),
                 notification: Some(grpc::notification::Notification::Invite(
                     grpc::InviteNotification {
-                        channel_id,
+                        channel_id: channel_id as u64,
                         invited_by,
                         uninvited,
                     },
@@ -307,11 +307,11 @@ impl GrpcDomainType for Notification {
                 sender_id,
                 message,
             } => Ok(grpc::Notification {
-                notification_id,
+                notification_id: notification_id as u64,
                 timestamp: Some(timestamp.into_grpc()?),
                 notification: Some(grpc::notification::Notification::Message(
                     grpc::MessageNotification {
-                        channel_id,
+                        channel_id: channel_id as u64,
                         sender_id,
                         message: Some(message.into_grpc()?),
                     },

@@ -3,15 +3,15 @@ use crate::database::message as msg_db;
 use crate::error::Error;
 use crate::types::common::Timestamp;
 use crate::types::resource::Content;
-use crate::types::{DatabaseDomainType, FastMap, GrpcDomainType};
-use crate::utils::HashMapExt;
+use crate::types::{DatabaseDomainType, FastMap, GrpcDomainType, UniqueId};
+use crate::utils::ConvertHashMap;
 use aura_rust::chat::v1 as grpc;
 use diesel_derive_enum::DbEnum;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Channel {
-    pub channel_id: String,
+    pub channel_id: UniqueId,
     pub name: String,
     pub description: String,
     pub members: FastMap<String, ChannelPermission>,
@@ -22,7 +22,7 @@ impl GrpcDomainType for Channel {
 
     fn from_grpc(value: Self::Type) -> Result<Self, Error> {
         Ok(Self {
-            channel_id: value.channel_id,
+            channel_id: value.channel_id as UniqueId,
             name: value.name,
             description: value.description,
             members: value
@@ -43,7 +43,7 @@ impl GrpcDomainType for Channel {
 
     fn into_grpc(self) -> Result<Self::Type, Error> {
         Ok(grpc::Channel {
-            channel_id: self.channel_id,
+            channel_id: self.channel_id as u64,
             name: self.name,
             description: self.description,
             members: self
@@ -74,7 +74,7 @@ impl DatabaseDomainType for Channel {
             .members
             .into_iter()
             .map(|(k, v)| ch_db::ChannelMember {
-                channel_id: self.channel_id.clone(),
+                channel_id: self.channel_id,
                 user_id: k,
                 permission: v,
             })
@@ -93,8 +93,8 @@ impl DatabaseDomainType for Channel {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Message {
-    pub message_id: String,
-    pub channel_id: String,
+    pub message_id: UniqueId,
+    pub channel_id: UniqueId,
     pub user_id: String,
     pub content: Content,
     pub created_at: Timestamp,
@@ -105,8 +105,8 @@ impl GrpcDomainType for Message {
 
     fn from_grpc(value: Self::Type) -> Result<Self, Error> {
         Ok(Self {
-            message_id: value.message_id,
-            channel_id: value.channel_id,
+            message_id: value.message_id as UniqueId,
+            channel_id: value.channel_id as UniqueId,
             user_id: value.user_id,
             content: Content::from_grpc(
                 value
@@ -123,8 +123,8 @@ impl GrpcDomainType for Message {
 
     fn into_grpc(self) -> Result<Self::Type, Error> {
         Ok(grpc::Message {
-            message_id: self.message_id,
-            channel_id: self.channel_id,
+            message_id: self.message_id as u64,
+            channel_id: self.channel_id as u64,
             user_id: self.user_id,
             content: Some(self.content.into_grpc()?),
             created_at: Some(self.created_at.into_grpc()?),

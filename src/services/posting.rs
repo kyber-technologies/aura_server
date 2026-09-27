@@ -2,11 +2,11 @@ use crate::auth;
 use crate::error::Error;
 use crate::logic::{feed, posting};
 use crate::state::ServerState;
-use crate::types::GrpcDomainType;
 use crate::types::common::Timestamp;
 use crate::types::posting::{Post, PostReaction};
 use crate::types::resource::Content;
-use crate::utils::{HashMapExt, generate_unique_id};
+use crate::types::{GrpcDomainType, UniqueId};
+use crate::utils::{ConvertHashMap, TransmuteVec};
 use aura_rust::posting::v1::posting_service_server::PostingService;
 use aura_rust::posting::v1::{
     FeedRequest, FeedResponse, GetOfRequest, GetOfResponse, GetRequest, GetResponse,
@@ -42,7 +42,8 @@ impl Service {
             req.index as usize,
         )
         .await
-        .map_err(|e| Error::internal(format!("Failed fetching feed: {e}")))?;
+        .map_err(|e| Error::internal(format!("Failed fetching feed: {e}")))?
+        .transmute_vec();
 
         Ok(FeedResponse {
             post_ids,
@@ -59,14 +60,14 @@ impl Service {
             &mut database,
             self.state.embedder(),
             Post {
-                post_id: generate_unique_id(),
+                post_id: self.state.id_factory().next_id()?,
                 author_id: user.user_id,
                 content: Content::from_grpc(
                     args.content
                         .ok_or(Error::invalid_format("Content not provided"))?,
                 )?,
                 timestamp: Timestamp::now(),
-                parent: args.parent,
+                parent: args.parent.map(|id| id as UniqueId),
                 reactions: Default::default(),
                 reaction: PostReaction::None,
             },
@@ -86,7 +87,7 @@ impl Service {
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
 
-        posting::delete(&mut database, &args.post_id, &user.user_id).await?;
+        posting::delete(&mut database, args.post_id as UniqueId, &user.user_id).await?;
 
         Ok(UnpublishResponse { error: None })
     }
@@ -95,11 +96,12 @@ impl Service {
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
+        let posts = args.posts.transmute_vec();
 
-        let posts = posting::get(&mut database, args.posts.as_slice(), Some(&user.user_id)).await?;
+        let posts = posting::get(&mut database, posts.as_slice(), Some(&user.user_id)).await?;
 
         Ok(GetResponse {
-            posts: posts.map_convert(|id, post| Ok((id, post.into_grpc()?)))?,
+            posts: posts.map_convert(|id, post| Ok((id as u64, post.into_grpc()?)))?,
             error: None,
         })
     }
@@ -166,7 +168,7 @@ impl Service {
 
         posting::react(
             &mut database,
-            &args.post_id,
+            args.post_id as UniqueId,
             &user.user_id,
             PostReaction::from_grpc(args.reaction())?,
         )

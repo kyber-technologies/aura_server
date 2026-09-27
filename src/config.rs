@@ -10,9 +10,9 @@ pub fn init() {
     } else {
         let path = std::env::var("CONFIG_FILE").unwrap_or_else(|_| {
             let path = if cfg!(debug_assertions) {
-                "./dev/config.toml"
+                "./dev/config.json"
             } else {
-                "./config.toml"
+                "./config.json"
             }
             .to_string();
 
@@ -50,6 +50,7 @@ pub fn get<'a>() -> &'a Config {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Config {
+    pub machine_id: String,
     pub runtime: RuntimeConfig,
     pub service: ServiceConfig,
     pub network: NetworkConfig,

@@ -2,18 +2,18 @@ use crate::database::posting as db;
 use crate::error::Error;
 use crate::types::common::Timestamp;
 use crate::types::resource::Content;
-use crate::types::{DatabaseDomainType, FastMap, GrpcDomainType};
-use crate::utils::HashMapExt;
+use crate::types::{DatabaseDomainType, FastMap, GrpcDomainType, UniqueId};
+use crate::utils::ConvertHashMap;
 use aura_rust::posting::v1 as grpc;
 use diesel_derive_enum::DbEnum;
 
 #[derive(Clone, Debug)]
 pub struct Post {
-    pub post_id: String,
+    pub post_id: UniqueId,
     pub author_id: String,
     pub content: Content,
     pub timestamp: Timestamp,
-    pub parent: Option<String>,
+    pub parent: Option<UniqueId>,
     pub reactions: FastMap<PostReaction, u32>,
     pub reaction: PostReaction,
 }
@@ -25,7 +25,7 @@ impl GrpcDomainType for Post {
         let reaction = value.reaction();
 
         Ok(Self {
-            post_id: value.post_id,
+            post_id: value.post_id as UniqueId,
             author_id: value.author_id,
             content: Content::from_grpc(
                 value
@@ -37,7 +37,7 @@ impl GrpcDomainType for Post {
                     .timestamp
                     .ok_or(Error::invalid_format("Timestamp not provided"))?,
             )?,
-            parent: value.parent,
+            parent: value.parent.map(|i| i as UniqueId),
             reactions: value.reactions.map_convert(|r, c| {
                 Ok((
                     PostReaction::from_grpc(
@@ -53,11 +53,11 @@ impl GrpcDomainType for Post {
 
     fn into_grpc(self) -> Result<Self::Type, Error> {
         Ok(grpc::Post {
-            post_id: self.post_id,
+            post_id: self.post_id as u64,
             author_id: self.author_id,
             content: Some(self.content.into_grpc()?),
             timestamp: Some(self.timestamp.into_grpc()?),
-            parent: self.parent,
+            parent: self.parent.map(|i| i as u64),
             reactions: self
                 .reactions
                 .map_convert(|r, c| Ok((r.into_grpc()?.as_str_name().to_owned(), c)))?,

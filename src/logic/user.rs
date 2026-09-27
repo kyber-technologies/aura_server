@@ -1,13 +1,13 @@
-use crate::database::DatabaseConnection;
 use crate::database::channel as ch_db;
 use crate::database::user as db;
 use crate::error::Error;
 use crate::logic::resource;
 use crate::schema::{channel_members, channels, user_blocks, user_follows, users};
+use crate::state::database::DatabaseConnection;
 use crate::types::common::Timestamp;
 use crate::types::resource::{ResourceDescriptor, ResourceId, ResourceMeta, ResourceNamespace};
 use crate::types::user::{Notification, Notifications, User, UserProfile, UserRole};
-use crate::types::{DatabaseDomainType, FastMap};
+use crate::types::{DatabaseDomainType, FastMap, FastSet, UniqueId};
 use crate::utils::escape_like_pattern;
 use crate::{auth, config, utils};
 use aura_rust::common::v1::ErrorCode;
@@ -72,7 +72,7 @@ pub async fn create(database: &mut DatabaseConnection, user: User) -> Result<(),
             user_id: user.user_id.clone(),
         },
     )
-        .await?;
+    .await?;
 
     resource::write(icon_id, tokio_stream::iter(chunks)).await?;
 
@@ -135,10 +135,10 @@ pub async fn get(
         .load::<(String, ch_db::Channel)>(database)
         .await?;
 
-    let all_channel_ids: Vec<String> = user_channel_tuples
+    let all_channel_ids: Vec<UniqueId> = user_channel_tuples
         .iter()
-        .map(|(_, ch)| ch.channel_id.clone())
-        .collect::<std::collections::HashSet<_>>()
+        .map(|(_, ch)| ch.channel_id)
+        .collect::<FastSet<_>>()
         .into_iter()
         .collect();
 
@@ -149,11 +149,9 @@ pub async fn get(
             .load::<ch_db::ChannelMember>(database)
             .await?;
 
-        let mut map: FastMap<String, Vec<ch_db::ChannelMember>> = FastMap::default();
+        let mut map: FastMap<UniqueId, Vec<ch_db::ChannelMember>> = FastMap::default();
         for member in members {
-            map.entry(member.channel_id.clone())
-                .or_default()
-                .push(member);
+            map.entry(member.channel_id).or_default().push(member);
         }
         map
     } else {
@@ -303,8 +301,8 @@ pub async fn block(
                 .filter(user_blocks::user_id.eq(user_id))
                 .filter(user_blocks::blocked_user_id.eq(block_user_id)),
         )
-            .execute(database)
-            .await?;
+        .execute(database)
+        .await?;
     }
 
     Ok(())
@@ -332,7 +330,7 @@ pub async fn is_blocked_by(
 pub async fn push_notifications(
     database: &mut DatabaseConnection,
     user_id: &str,
-    new_notifications: impl IntoIterator<Item=Notification>,
+    new_notifications: impl IntoIterator<Item = Notification>,
 ) -> Result<(), Error> {
     let config = config::get();
     let now = Timestamp::now();
@@ -421,8 +419,8 @@ pub async fn unfollow(
             .filter(user_follows::follower_id.eq(follower_id))
             .filter(user_follows::followed_id.eq(followed_id)),
     )
-        .execute(database)
-        .await?;
+    .execute(database)
+    .await?;
 
     Ok(())
 }
@@ -460,7 +458,7 @@ pub async fn create_admin(database: &mut DatabaseConnection) -> Result<(), Error
                 following: Vec::new(),
             },
         )
-            .await?;
+        .await?;
 
         tracing::info!(
             "Created setup administrator 'admin' with password 'admin'. Please change this immediately!"

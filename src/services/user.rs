@@ -6,7 +6,7 @@ use crate::types::GrpcDomainType;
 use crate::types::common::Timestamp;
 use crate::types::resource::ResourceId;
 use crate::types::user::{Notifications, User, UserRole};
-use crate::utils::HashMapExt;
+use crate::utils::ConvertHashMap;
 use aura_rust::common::v1::ErrorCode;
 use aura_rust::user::v1::user_service_server::UserService;
 use aura_rust::user::v1::{

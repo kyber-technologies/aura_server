@@ -1,4 +1,5 @@
-CREATE EXTENSION IF NOT EXISTS vector;
+CREATE
+EXTENSION IF NOT EXISTS vector;
 
 CREATE TYPE user_role AS ENUM (
     'user',
@@ -18,7 +19,6 @@ CREATE TABLE users
     created_at    TIMESTAMPTZ NOT NULL,
     embedding     vector(384),
 
-    CONSTRAINT users_user_id_unique UNIQUE (user_id),
     CONSTRAINT users_email_unique UNIQUE (email)
 );
 
@@ -35,5 +35,4 @@ CREATE TABLE user_follows
     CONSTRAINT user_follows_no_self_follow CHECK (follower_id <> followed_id)
 );
 
-CREATE INDEX idx_user_follows_follower ON user_follows (follower_id);
 CREATE INDEX idx_user_follows_followed ON user_follows (followed_id);

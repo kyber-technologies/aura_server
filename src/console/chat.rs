@@ -2,10 +2,10 @@ use crate::console::{Command, CommandError};
 use crate::error::Error;
 use crate::logic::chat;
 use crate::state::ServerState;
+use crate::types::UniqueId;
 use crate::types::chat::{Channel, ChannelPermission, Message};
 use crate::types::common::Timestamp;
 use crate::types::resource::Content;
-use crate::utils::generate_unique_id;
 use chrono::DateTime;
 use no_pico_args::Arguments;
 use std::pin::Pin;
@@ -23,11 +23,13 @@ pub const CREATE: Command = Command {
             let description: String = args.free_from_str()?;
 
             let mut database = state.database().await?;
+            let ids = state.id_factory();
 
-            let channel_id = generate_unique_id();
+            let channel_id = ids.next_id()?;
 
             let channel = chat::create_channel(
                 &mut database,
+                ids,
                 Channel {
                     channel_id,
                     name,
@@ -53,12 +55,12 @@ pub const DELETE: Command = Command {
               state: ServerState|
      -> Pin<Box<dyn Future<Output = Result<(), CommandError>>>> {
         Box::pin(async move {
-            let channel_id: String = args.free_from_str()?;
+            let channel_id: UniqueId = args.free_from_str()?;
             let user: String = args.free_from_str()?;
 
             let mut database = state.database().await?;
 
-            chat::delete_channel(&mut database, &channel_id, &user).await?;
+            chat::delete_channel(&mut database, channel_id, &user).await?;
 
             tracing::info!("Deleted channel '{channel_id}'.");
 
@@ -75,11 +77,11 @@ pub const GET: Command = Command {
               state: ServerState|
      -> Pin<Box<dyn Future<Output = Result<(), CommandError>>>> {
         Box::pin(async move {
-            let channel_id: String = args.free_from_str()?;
+            let channel_id: UniqueId = args.free_from_str()?;
 
             let mut database = state.database().await?;
 
-            let channel = chat::get_channel(&mut database, &channel_id)
+            let channel = chat::get_channel(&mut database, channel_id)
                 .await?
                 .ok_or(Error::not_found("Channel not found"));
 
@@ -98,7 +100,7 @@ pub const INVITE: Command = Command {
               state: ServerState|
      -> Pin<Box<dyn Future<Output = Result<(), CommandError>>>> {
         Box::pin(async move {
-            let channel_id: String = args.free_from_str()?;
+            let channel_id: UniqueId = args.free_from_str()?;
             let user: String = args.free_from_str()?;
             let target_user: String = args.free_from_str()?;
 
@@ -107,10 +109,24 @@ pub const INVITE: Command = Command {
             let mut database = state.database().await?;
 
             if uninvite {
-                chat::uninvite(&mut database, &channel_id, &user, &target_user).await?;
+                chat::uninvite(
+                    &mut database,
+                    state.id_factory(),
+                    channel_id,
+                    &user,
+                    &target_user,
+                )
+                .await?;
                 tracing::info!("Uninvited user '{target_user}' from '{channel_id}'.");
             } else {
-                chat::invite(&mut database, &channel_id, &user, &target_user).await?;
+                chat::invite(
+                    &mut database,
+                    state.id_factory(),
+                    channel_id,
+                    &user,
+                    &target_user,
+                )
+                .await?;
                 tracing::info!("Invited user '{target_user}' to '{channel_id}'.");
             }
 
@@ -127,7 +143,7 @@ pub const SET_PERM: Command = Command {
               state: ServerState|
      -> Pin<Box<dyn Future<Output = Result<(), CommandError>>>> {
         Box::pin(async move {
-            let channel_id: String = args.free_from_str()?;
+            let channel_id: UniqueId = args.free_from_str()?;
             let user: String = args.free_from_str()?;
             let target_user: String = args.free_from_str()?;
             let perm: ChannelPermission = args.free_from_fn(|s| match s {
@@ -141,7 +157,7 @@ pub const SET_PERM: Command = Command {
 
             let mut database = state.database().await?;
 
-            chat::set_channel_member_perm(&mut database, &channel_id, &user, &target_user, perm)
+            chat::set_channel_member_perm(&mut database, channel_id, &user, &target_user, perm)
                 .await?;
 
             tracing::info!(
@@ -161,18 +177,20 @@ pub const SEND: Command = Command {
               state: ServerState|
      -> Pin<Box<dyn Future<Output = Result<(), CommandError>>>> {
         Box::pin(async move {
-            let channel_id: String = args.free_from_str()?;
+            let channel_id: UniqueId = args.free_from_str()?;
             let user_id: String = args.free_from_str()?;
             let message: String = args.free_from_str()?;
 
             let mut database = state.database().await?;
+            let ids = state.id_factory();
 
-            let message_id = generate_unique_id();
+            let message_id = ids.next_id()?;
 
             chat::send(
                 &mut database,
+                ids,
                 Message {
-                    message_id: message_id.clone(),
+                    message_id,
                     channel_id,
                     user_id,
                     content: Content::Text(message),
@@ -196,7 +214,7 @@ pub const READ: Command = Command {
               state: ServerState|
      -> Pin<Box<dyn Future<Output = Result<(), CommandError>>>> {
         Box::pin(async move {
-            let channel_id: String = args.free_from_str()?;
+            let channel_id: UniqueId = args.free_from_str()?;
             let limit: u32 = args.free_from_str()?;
             let start_at: Timestamp = args.free_from_fn::<Timestamp, CommandError>(|s| {
                 Ok(Timestamp(
@@ -208,7 +226,7 @@ pub const READ: Command = Command {
 
             let mut database = state.database().await?;
 
-            let messages = chat::read(&mut database, &channel_id, limit, start_at).await?;
+            let messages = chat::read(&mut database, channel_id, limit, start_at).await?;
 
             tracing::info!("Read Messages: {messages:#?}");
 
@@ -225,11 +243,11 @@ pub const DELETE_MSG: Command = Command {
               state: ServerState|
      -> Pin<Box<dyn Future<Output = Result<(), CommandError>>>> {
         Box::pin(async move {
-            let message_id: String = args.free_from_str()?;
+            let message_id: UniqueId = args.free_from_str()?;
 
             let mut database = state.database().await?;
 
-            chat::delete_message(&mut database, &message_id).await?;
+            chat::delete_message(&mut database, message_id).await?;
 
             tracing::info!("Deleted message '{message_id}'.");
 

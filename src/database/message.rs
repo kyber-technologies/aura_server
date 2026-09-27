@@ -1,4 +1,5 @@
 use crate::schema::messages;
+use crate::types::UniqueId;
 use chrono::{DateTime, Utc};
 use diesel::{Insertable, Queryable, Selectable};
 use serde_json::Value;
@@ -7,8 +8,8 @@ use serde_json::Value;
 #[diesel(table_name = messages)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Message {
-    pub message_id: String,
-    pub channel_id: String,
+    pub message_id: UniqueId,
+    pub channel_id: UniqueId,
     pub user_id: String,
     pub content: Value,
     pub created_at: DateTime<Utc>,

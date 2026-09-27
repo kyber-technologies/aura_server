@@ -2,7 +2,7 @@ use crate::database::resource as db;
 use crate::error::Error;
 use crate::types::common::Timestamp;
 use crate::types::{DatabaseDomainType, FastMap, GrpcDomainType, JsonDatabaseDomainType};
-use crate::utils::HashMapExt;
+use crate::utils::ConvertHashMap;
 use aura_rust::resource::v1 as grpc;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};

@@ -5,8 +5,7 @@ use crate::state::ServerState;
 use crate::types::chat::{Channel, ChannelPermission, Message};
 use crate::types::common::Timestamp;
 use crate::types::resource::Content;
-use crate::types::{FastMap, GrpcDomainType};
-use crate::utils::generate_unique_id;
+use crate::types::{FastMap, GrpcDomainType, UniqueId};
 use aura_rust::chat::v1::chat_service_server::ChatService;
 use aura_rust::chat::v1::{
     CreateChannelRequest, CreateChannelResponse, DeleteChannelRequest, DeleteChannelResponse,
@@ -33,10 +32,11 @@ impl Service {
 
         let (user, _) = auth::verify(&mut database, &request).await?;
         let channel_args = request.into_inner();
-        let channel_id = generate_unique_id();
+        let channel_id = self.state.id_factory().next_id()?;
 
         let channel = chat::create_channel(
             &mut database,
+            self.state.id_factory(),
             Channel {
                 channel_id,
                 name: channel_args.name,
@@ -75,7 +75,7 @@ impl Service {
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
 
-        chat::delete_channel(&mut database, &args.channel_id, &user.user_id).await?;
+        chat::delete_channel(&mut database, args.channel_id as UniqueId, &user.user_id).await?;
 
         Ok(DeleteChannelResponse { error: None })
     }
@@ -92,7 +92,7 @@ impl Service {
 
         chat::set_channel_member_perm(
             &mut database,
-            &args.channel_id,
+            args.channel_id as UniqueId,
             &user.user_id,
             &args.user_id,
             ChannelPermission::from_grpc(perm)?,
@@ -110,7 +110,8 @@ impl Service {
         if args.uninvite {
             chat::uninvite(
                 &mut database,
-                &args.channel_id,
+                self.state.id_factory(),
+                args.channel_id as UniqueId,
                 &user.user_id,
                 &args.user_id,
             )
@@ -118,7 +119,8 @@ impl Service {
         } else {
             chat::invite(
                 &mut database,
-                &args.channel_id,
+                self.state.id_factory(),
+                args.channel_id as UniqueId,
                 &user.user_id,
                 &args.user_id,
             )
@@ -135,7 +137,7 @@ impl Service {
 
         let args = request.into_inner();
 
-        let channel = chat::get_channel(&mut database, &args.channel_id)
+        let channel = chat::get_channel(&mut database, args.channel_id as UniqueId)
             .await?
             .ok_or(Error::not_found("Channel not found"))?;
 
@@ -145,7 +147,7 @@ impl Service {
 
         let messages = chat::read(
             &mut database,
-            &args.channel_id,
+            args.channel_id as UniqueId,
             args.limit,
             Timestamp::from_grpc(
                 args.start_time
@@ -165,6 +167,7 @@ impl Service {
 
     async fn _send(&self, request: Request<SendRequest>) -> Result<SendResponse, Error> {
         let mut database = self.state.database().await?;
+        let ids = self.state.id_factory();
 
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
@@ -173,17 +176,22 @@ impl Service {
             .content
             .ok_or(Error::invalid_format("No content provided"))?;
 
-        let perm =
-            chat::get_channel_member_perm(&mut database, &args.channel_id, &user.user_id).await?;
+        let perm = chat::get_channel_member_perm(
+            &mut database,
+            args.channel_id as UniqueId,
+            &user.user_id,
+        )
+        .await?;
 
         if perm == ChannelPermission::ReadWrite || perm == ChannelPermission::Manager {
-            let id = generate_unique_id();
+            let id = ids.next_id()?;
             let msg = chat::send(
                 &mut database,
+                ids,
                 Message {
                     message_id: id,
                     user_id: user.user_id,
-                    channel_id: args.channel_id,
+                    channel_id: args.channel_id as UniqueId,
                     content: Content::from_grpc(content)?,
                     created_at: Timestamp::now(),
                 },
@@ -205,17 +213,17 @@ impl Service {
         let mut database = self.state.database().await?;
 
         let (user, _) = auth::verify(&mut database, &request).await?;
-        let message = chat::get_message(&mut database, &request.into_inner().message_id)
+        let message = chat::get_message(&mut database, request.into_inner().message_id as UniqueId)
             .await?
             .ok_or(Error::not_found("Message not found"))?;
 
-        let perm = chat::get_channel_member_perm(&mut database, &message.channel_id, &user.user_id)
-            .await?;
+        let perm =
+            chat::get_channel_member_perm(&mut database, message.channel_id, &user.user_id).await?;
 
         if perm == ChannelPermission::Manager
             || (perm == ChannelPermission::ReadWrite && message.user_id == user.user_id)
         {
-            chat::delete_message(&mut database, &message.message_id).await?;
+            chat::delete_message(&mut database, message.message_id).await?;
 
             Ok(DeleteMessageResponse { error: None })
         } else {

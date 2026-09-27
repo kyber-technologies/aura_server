@@ -23,8 +23,6 @@ mod config;
 mod connect_info;
 mod console;
 mod database;
-mod email;
-mod embedder;
 mod error;
 mod logic;
 mod schema;

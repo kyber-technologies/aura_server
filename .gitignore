@@ -2,7 +2,7 @@
 /.idea
 /dev/database
 /dev/resources/*
-/dev/config.toml
+/dev/config.json
 /dev/tls-cert.pem
 /dev/tls-key.pem
 !/dev/resources/aura/

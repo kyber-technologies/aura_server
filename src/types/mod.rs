@@ -1,6 +1,7 @@
 use crate::error::Error;
 use serde::{Deserialize, Serialize};
 
+pub type UniqueId = i64;
 pub type FastMap<K, V> = std::collections::HashMap<K, V, rapidhash::fast::RandomState>;
 pub type FastSet<T> = std::collections::HashSet<T, rapidhash::fast::RandomState>;
 pub type FastDashMap<K, V> = dashmap::DashMap<K, V, rapidhash::fast::RandomState>;

@@ -1,21 +1,22 @@
-use crate::database::DatabaseConnection;
 use crate::database::channel as ch_db;
 use crate::database::message as msg_db;
 use crate::error::Error;
 use crate::logic::user;
 use crate::logic::user::push_notifications;
 use crate::schema::{channel_members, channels, messages};
-use crate::types::DatabaseDomainType;
+use crate::state::database::DatabaseConnection;
+use crate::state::id_factory::IdFactory;
 use crate::types::chat::{Channel, ChannelPermission, Message};
 use crate::types::common::Timestamp;
 use crate::types::user::Notification;
+use crate::types::{DatabaseDomainType, UniqueId};
 use crate::utils;
-use crate::utils::generate_unique_id;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, SelectableHelper};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 
 pub async fn create_channel(
     database: &mut DatabaseConnection,
+    ids: &IdFactory,
     mut channel: Channel,
     owner: &str,
 ) -> Result<Channel, Error> {
@@ -26,7 +27,7 @@ pub async fn create_channel(
                 .insert(owner.to_string(), ChannelPermission::Manager);
 
             let channel_data = ch_db::Channel {
-                channel_id: channel.channel_id.clone(),
+                channel_id: channel.channel_id,
                 name: channel.name.clone(),
                 description: channel.description.clone(),
             };
@@ -40,7 +41,7 @@ pub async fn create_channel(
                 .members
                 .iter()
                 .map(|(user_id, permission)| ch_db::ChannelMember {
-                    channel_id: channel.channel_id.clone(),
+                    channel_id: channel.channel_id,
                     user_id: user_id.clone(),
                     permission: *permission,
                 })
@@ -62,9 +63,9 @@ pub async fn create_channel(
                     database,
                     user_id,
                     [Notification::Invite {
-                        notification_id: generate_unique_id(),
+                        notification_id: ids.next_id()?,
                         timestamp: Timestamp::now(),
-                        channel_id: channel.channel_id.clone(),
+                        channel_id: channel.channel_id,
                         invited_by: owner.to_string(),
                         uninvited: false,
                     }],
@@ -79,7 +80,7 @@ pub async fn create_channel(
 
 pub async fn delete_channel(
     database: &mut DatabaseConnection,
-    channel_id: &str,
+    channel_id: UniqueId,
     user_id: &str,
 ) -> Result<(), Error> {
     if !channel_exists(database, channel_id).await? {
@@ -107,7 +108,8 @@ pub async fn delete_channel(
 
 pub async fn invite(
     database: &mut DatabaseConnection,
-    channel_id: &str,
+    ids: &IdFactory,
+    channel_id: UniqueId,
     user_id: &str,
     invited_user_id: &str,
 ) -> Result<(), Error> {
@@ -141,7 +143,7 @@ pub async fn invite(
             }
 
             let member = ch_db::ChannelMember {
-                channel_id: channel_id.to_string(),
+                channel_id,
                 user_id: invited_user_id.to_string(),
                 permission: ChannelPermission::ReadWrite,
             };
@@ -162,9 +164,9 @@ pub async fn invite(
                 database,
                 invited_user_id,
                 [Notification::Invite {
-                    notification_id: generate_unique_id(),
+                    notification_id: ids.next_id()?,
                     timestamp: Timestamp::now(),
-                    channel_id: channel_id.to_string(),
+                    channel_id,
                     invited_by: user_id.to_string(),
                     uninvited: false,
                 }],
@@ -178,7 +180,8 @@ pub async fn invite(
 
 pub async fn uninvite(
     database: &mut DatabaseConnection,
-    channel_id: &str,
+    ids: &IdFactory,
+    channel_id: UniqueId,
     user_id: &str,
     uninvited_user_id: &str,
 ) -> Result<(), Error> {
@@ -238,9 +241,9 @@ pub async fn uninvite(
                 database,
                 uninvited_user_id,
                 [Notification::Invite {
-                    notification_id: generate_unique_id(),
+                    notification_id: ids.next_id()?,
                     timestamp: Timestamp::now(),
-                    channel_id: channel_id.to_string(),
+                    channel_id,
                     invited_by: user_id.to_string(),
                     uninvited: true,
                 }],
@@ -254,7 +257,7 @@ pub async fn uninvite(
 
 pub async fn set_channel_member_perm(
     database: &mut DatabaseConnection,
-    channel_id: &str,
+    channel_id: UniqueId,
     user_id: &str,
     target_user_id: &str,
     permission: ChannelPermission,
@@ -316,7 +319,7 @@ pub async fn set_channel_member_perm(
 
 pub async fn get_channel(
     database: &mut DatabaseConnection,
-    channel_id: &str,
+    channel_id: UniqueId,
 ) -> Result<Option<Channel>, Error> {
     let channel = channels::table
         .find(channel_id)
@@ -342,7 +345,7 @@ pub async fn get_channel(
 
 pub async fn get_channel_member_perm(
     database: &mut DatabaseConnection,
-    channel_id: &str,
+    channel_id: UniqueId,
     user_id: &str,
 ) -> Result<ChannelPermission, Error> {
     channel_members::table
@@ -357,21 +360,25 @@ pub async fn get_channel_member_perm(
 
 pub async fn channel_exists(
     database: &mut DatabaseConnection,
-    channel_id: &str,
+    channel_id: UniqueId,
 ) -> Result<bool, Error> {
     Ok(channels::table
         .find(channel_id)
         .select(channels::channel_id)
-        .first::<String>(database)
+        .first::<UniqueId>(database)
         .await
         .optional()?
         .is_some())
 }
 
-pub async fn send(database: &mut DatabaseConnection, message: Message) -> Result<Message, Error> {
+pub async fn send(
+    database: &mut DatabaseConnection,
+    ids: &IdFactory,
+    message: Message,
+) -> Result<Message, Error> {
     database
         .transaction(async |database| {
-            let channel = get_channel(database, &message.channel_id)
+            let channel = get_channel(database, message.channel_id)
                 .await?
                 .ok_or(Error::not_found("Channel not found"))?;
 
@@ -398,9 +405,9 @@ pub async fn send(database: &mut DatabaseConnection, message: Message) -> Result
                     database,
                     member,
                     [Notification::Message {
-                        notification_id: generate_unique_id(),
+                        notification_id: ids.next_id()?,
                         timestamp: Timestamp::now(),
-                        channel_id: channel.channel_id.clone(),
+                        channel_id: channel.channel_id,
                         sender_id: message.user_id.clone(),
                         message: message.clone(),
                     }],
@@ -415,7 +422,7 @@ pub async fn send(database: &mut DatabaseConnection, message: Message) -> Result
 
 pub async fn read(
     database: &mut DatabaseConnection,
-    channel_id: &str,
+    channel_id: UniqueId,
     limit: u32,
     start_at: Timestamp,
 ) -> Result<Vec<Message>, Error> {
@@ -435,7 +442,7 @@ pub async fn read(
 
 pub async fn delete_message(
     database: &mut DatabaseConnection,
-    message_id: &str,
+    message_id: UniqueId,
 ) -> Result<(), Error> {
     let deleted = diesel::delete(messages::table.find(message_id))
         .execute(database)
@@ -450,7 +457,7 @@ pub async fn delete_message(
 
 pub async fn get_message(
     database: &mut DatabaseConnection,
-    message_id: &str,
+    message_id: UniqueId,
 ) -> Result<Option<Message>, Error> {
     let message = messages::table
         .find(message_id)

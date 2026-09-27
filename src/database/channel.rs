@@ -1,6 +1,7 @@
 use diesel::{Insertable, Queryable, Selectable};
 
 use crate::schema::{channel_members, channels};
+use crate::types::UniqueId;
 use crate::types::chat::ChannelPermission;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -13,7 +14,7 @@ pub struct ChannelData {
 #[diesel(table_name = channels)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Channel {
-    pub channel_id: String,
+    pub channel_id: UniqueId,
     pub name: String,
     pub description: String,
 }
@@ -22,7 +23,7 @@ pub struct Channel {
 #[diesel(table_name = channel_members)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ChannelMember {
-    pub channel_id: String,
+    pub channel_id: UniqueId,
     pub user_id: String,
     pub permission: ChannelPermission,
 }

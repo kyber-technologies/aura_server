@@ -5,7 +5,7 @@ use crate::state::ServerState;
 use crate::types::GrpcDomainType;
 use crate::types::common::Timestamp;
 use crate::types::resource::{ResourceDescriptor, ResourceId, ResourceMeta, ResourceNamespace};
-use crate::utils::{SafeStreaming, generate_unique_id};
+use crate::utils::SafeStreaming;
 use aura_rust::resource::v1::resource_service_server::ResourceService;
 use aura_rust::resource::v1::upload_request::Payload;
 use aura_rust::resource::v1::{
@@ -45,7 +45,7 @@ impl Service {
                     .namespace
                     .ok_or(Error::invalid_format("Namespace not provided"))?,
             )?,
-            key: generate_unique_id(),
+            key: self.state.id_factory().next_id()?.to_string(),
         };
 
         let mut meta = ResourceMeta::from_grpc(match meta_req

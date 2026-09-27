@@ -1,4 +1,5 @@
-CREATE EXTENSION IF NOT EXISTS vector;
+CREATE
+EXTENSION IF NOT EXISTS vector;
 
 CREATE TYPE post_reaction AS ENUM (
     'none',
@@ -8,46 +9,28 @@ CREATE TYPE post_reaction AS ENUM (
 
 CREATE TABLE posts
 (
-    post_id   TEXT PRIMARY KEY,
-    author_id TEXT        NOT NULL,
+    post_id   BIGINT PRIMARY KEY,
+    author_id TEXT        NOT NULL REFERENCES users (user_id) ON DELETE CASCADE,
     content   JSONB       NOT NULL,
     timestamp TIMESTAMPTZ NOT NULL,
-    parent_id TEXT,
-    embedding vector(384),
-
-    FOREIGN KEY (author_id)
-        REFERENCES users (user_id)
-        ON DELETE CASCADE,
-
-    FOREIGN KEY (parent_id)
-        REFERENCES posts (post_id)
-        ON DELETE CASCADE
+    parent_id BIGINT REFERENCES posts (post_id) ON DELETE CASCADE,
+    embedding vector(384)
 );
 
-CREATE INDEX posts_author_id_idx ON posts (author_id);
-CREATE INDEX posts_parent_id_idx ON posts (parent_id);
-CREATE INDEX posts_timestamp_idx ON posts (timestamp DESC);
-
-CREATE TABLE post_reactions
-(
-    post_id  TEXT          NOT NULL,
-    user_id  TEXT          NOT NULL,
-    reaction post_reaction NOT NULL,
-
-    PRIMARY KEY (post_id, user_id),
-
-    FOREIGN KEY (post_id)
-        REFERENCES posts (post_id)
-        ON DELETE CASCADE,
-
-    FOREIGN KEY (user_id)
-        REFERENCES users (user_id)
-        ON DELETE CASCADE
-);
-
-CREATE INDEX post_reactions_post_id_idx ON post_reactions (post_id);
+CREATE INDEX idx_posts_author_id ON posts (author_id);
+CREATE INDEX idx_posts_parent_id ON posts (parent_id) WHERE parent_id IS NOT NULL;
+CREATE INDEX idx_posts_timestamp_desc ON posts (timestamp DESC);
 
 CREATE INDEX idx_posts_embedding_hnsw
     ON posts USING hnsw (embedding vector_cosine_ops);
 
-CREATE INDEX idx_post_reactions_post_id ON post_reactions (post_id);
+CREATE TABLE post_reactions
+(
+    post_id  BIGINT        NOT NULL REFERENCES posts (post_id) ON DELETE CASCADE,
+    user_id  TEXT          NOT NULL REFERENCES users (user_id) ON DELETE CASCADE,
+    reaction post_reaction NOT NULL,
+
+    PRIMARY KEY (post_id, user_id)
+);
+
+CREATE INDEX idx_post_reactions_user_id ON post_reactions (user_id);

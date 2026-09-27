@@ -1,19 +1,12 @@
 CREATE TABLE messages
 (
-    message_id TEXT PRIMARY KEY,
-    channel_id TEXT        NOT NULL,
-    user_id    TEXT        NOT NULL,
+    message_id BIGINT PRIMARY KEY,
+    channel_id BIGINT      NOT NULL REFERENCES channels (channel_id) ON DELETE CASCADE,
+    user_id    TEXT        NOT NULL REFERENCES users (user_id) ON DELETE CASCADE,
     content    JSONB       NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL,
-
-    FOREIGN KEY (channel_id)
-        REFERENCES channels (channel_id)
-        ON DELETE CASCADE,
-
-    FOREIGN KEY (user_id)
-        REFERENCES users (user_id)
-        ON DELETE CASCADE
+    created_at TIMESTAMPTZ NOT NULL
 );
 
-CREATE INDEX messages_channel_id_idx
-    ON messages (channel_id);
+CREATE INDEX idx_messages_channel_created ON messages (channel_id, created_at DESC);
+
+CREATE INDEX idx_messages_user_id ON messages (user_id);

@@ -1,11 +1,17 @@
 use crate::config;
-use crate::database::{Database, DatabaseConnection};
-use crate::email::EmailRegister;
-use crate::embedder::TextEmbedder;
 use crate::error::Error;
+use crate::state::database::{Database, DatabaseConnection};
+use crate::state::id_factory::IdFactory;
+use email::EmailRegister;
+use embedder::TextEmbedder;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Notify;
+
+pub mod database;
+pub mod email;
+pub mod embedder;
+pub mod id_factory;
 
 #[derive(Clone)]
 pub struct ServerState {
@@ -13,6 +19,7 @@ pub struct ServerState {
     emails: Arc<EmailRegister>,
     exit: Arc<Notify>,
     embedder: TextEmbedder,
+    id_factory: IdFactory,
 }
 
 impl ServerState {
@@ -26,11 +33,18 @@ impl ServerState {
             .await
             .expect("Failed to embed test data");
 
+        let machine_id = config::get().machine_id.as_str();
+
+        if machine_id.is_empty() {
+            panic!("No machine ID specified!");
+        }
+
         Self {
             database: Database::connect().await,
             emails: Arc::new(EmailRegister::new().await),
             exit: Arc::new(Notify::new()),
             embedder,
+            id_factory: IdFactory::new(machine_id.parse().expect("Invalid machine ID")),
         }
     }
 
@@ -70,6 +84,10 @@ impl ServerState {
 
     pub fn embedder(&self) -> &TextEmbedder {
         &self.embedder
+    }
+
+    pub fn id_factory(&self) -> &IdFactory {
+        &self.id_factory
     }
 
     pub fn dispose(self) {

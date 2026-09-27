@@ -1,7 +1,7 @@
 use crate::config;
-use crate::database::DatabaseConnection;
 use crate::error::Error;
 use crate::logic::user;
+use crate::state::database::DatabaseConnection;
 use crate::types::common::Auth;
 use crate::types::user::User;
 use argon2::password_hash::phc::Salt;
