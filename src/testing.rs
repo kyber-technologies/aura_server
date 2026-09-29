@@ -1,6 +1,6 @@
 use crate::types::common::Timestamp;
 use crate::types::resource::{ResourceId, ResourceNamespace};
-use crate::types::user::{Notifications, User, UserRole};
+use crate::types::user::{Notifications, User, UserRole, UserSettings};
 
 pub fn test_user(hash: bool) -> User {
     User {
@@ -19,6 +19,7 @@ pub fn test_user(hash: bool) -> User {
             key: "user".to_string(),
         },
         notifications: Notifications(Vec::new()),
+        settings: UserSettings::default(),
         channels: Vec::new(),
         followers: Vec::new(),
         following: Vec::new(),
@@ -42,6 +43,7 @@ pub fn moderator_user(hash: bool) -> User {
             key: "moderator".to_string(),
         },
         notifications: Notifications(Vec::new()),
+        settings: UserSettings::default(),
         channels: Vec::new(),
         followers: Vec::new(),
         following: Vec::new(),
@@ -65,6 +67,7 @@ pub fn admin_user(hash: bool) -> User {
             key: "admin".to_string(),
         },
         notifications: Notifications(Vec::new()),
+        settings: UserSettings::default(),
         channels: Vec::new(),
         followers: Vec::new(),
         following: Vec::new(),

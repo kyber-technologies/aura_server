@@ -1,6 +1,6 @@
 use crate::console::{Command, CommandError};
 use crate::error::Error;
-use crate::logic::{feed, posting};
+use crate::logic::{feed, posting, user};
 use crate::state::ServerState;
 use crate::types::common::Timestamp;
 use crate::types::posting::{Post, PostReaction};
@@ -25,6 +25,12 @@ pub const PUBLISH: Command = Command {
 
             let mut database = state.database().await?;
 
+            let (_, user) = user::get(&mut database, slice::from_ref(&user_id))
+                .await?
+                .into_iter()
+                .next()
+                .ok_or(Error::not_found("User not found"))?;
+
             posting::create(
                 &mut database,
                 state.embedder(),
@@ -37,6 +43,7 @@ pub const PUBLISH: Command = Command {
                     reactions: FastMap::default(),
                     reaction: PostReaction::None,
                 },
+                &user.settings,
             )
             .await?;
 
@@ -176,7 +183,13 @@ pub const REACT: Command = Command {
 
             let mut database = state.database().await?;
 
-            posting::react(&mut database, post_id, &user_id, reaction).await?;
+            let (_, user) = user::get(&mut database, slice::from_ref(&user_id))
+                .await?
+                .into_iter()
+                .next()
+                .ok_or(Error::not_found("User not found"))?;
+
+            posting::react(&mut database, post_id, &user_id, reaction, &user.settings).await?;
 
             Ok(())
         })
@@ -198,11 +211,24 @@ pub const FEED: Command = Command {
 
             let mut database = state.database().await?;
 
+            let (_, user) = user::get(&mut database, slice::from_ref(&user_id))
+                .await?
+                .into_iter()
+                .next()
+                .ok_or(Error::not_found("User not found"))?;
+
             let vector = feed::fetch_user_vector(&mut database, &user_id)
                 .await?
                 .ok_or(Error::not_found("User not found"))?;
-            let post_ids =
-                feed::fetch_feed(&mut database, &user_id, Some(vector), limit, page).await?;
+            let post_ids = feed::fetch_feed(
+                &mut database,
+                &user_id,
+                Some(vector),
+                &user.settings,
+                limit,
+                page,
+            )
+            .await?;
 
             if fetch {
                 let mut posts = Vec::with_capacity(post_ids.len());

@@ -18,6 +18,7 @@ pub struct User {
     pub notifications: Value,
     pub created_at: DateTime<Utc>,
     pub embedding: Option<Vector>,
+    pub settings: Value,
 }
 
 #[derive(Debug, Queryable, Selectable, Insertable)]

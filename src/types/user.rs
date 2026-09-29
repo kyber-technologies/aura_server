@@ -18,6 +18,7 @@ pub struct User {
     pub created_at: Timestamp,
     pub icon: ResourceId,
     pub notifications: Notifications,
+    pub settings: UserSettings,
     pub channels: Vec<Channel>,
     pub followers: Vec<String>,
     pub following: Vec<String>,
@@ -60,6 +61,11 @@ impl GrpcDomainType for User {
                     .ok_or(Error::invalid_format("Icon not provided"))?,
             )?,
             notifications: Notifications::from_grpc(value.notifications)?,
+            settings: UserSettings::from_grpc(
+                value
+                    .settings
+                    .ok_or(Error::invalid_format("Settings not provided"))?,
+            )?,
             channels: value
                 .channels
                 .into_iter()
@@ -86,6 +92,7 @@ impl GrpcDomainType for User {
             created_at: Some(self.created_at.into_grpc()?),
             icon: Some(self.icon.into_grpc()?),
             notifications: self.notifications.into_grpc()?,
+            settings: Some(self.settings.into_grpc()?),
             channels: self
                 .channels
                 .into_iter()
@@ -110,6 +117,7 @@ impl DatabaseDomainType for User {
             created_at: Timestamp(value.user.created_at),
             icon: ResourceId::from_db(value.user.icon)?,
             notifications: Notifications::from_db(value.user.notifications)?,
+            settings: UserSettings::from_db(value.user.settings)?,
             channels: value
                 .channels
                 .into_iter()
@@ -132,6 +140,7 @@ impl DatabaseDomainType for User {
                 notifications: self.notifications.into_db()?,
                 created_at: self.created_at.0,
                 embedding: None,
+                settings: self.settings.into_db()?,
             },
             channels: self
                 .channels
@@ -234,6 +243,13 @@ pub enum Notification {
         sender_id: String,
         message: Message,
     },
+    Comment {
+        notification_id: UniqueId,
+        timestamp: Timestamp,
+        post_id: UniqueId,
+        commend_id: UniqueId,
+        sender_id: String,
+    },
 }
 
 impl Notification {
@@ -241,6 +257,15 @@ impl Notification {
         match self {
             Notification::Invite { timestamp, .. } => timestamp,
             Notification::Message { timestamp, .. } => timestamp,
+            Notification::Comment { timestamp, .. } => timestamp,
+        }
+    }
+
+    pub fn should_notify(&self, settings: &UserSettings) -> bool {
+        match self {
+            Notification::Invite { .. } => settings.notify_invite,
+            Notification::Message { .. } => settings.notify_message,
+            Notification::Comment { .. } => settings.notify_comment,
         }
     }
 }
@@ -277,6 +302,17 @@ impl GrpcDomainType for Notification {
                     not.message
                         .ok_or(Error::invalid_format("Message not provided"))?,
                 )?,
+            }),
+            grpc::notification::Notification::Comment(not) => Ok(Self::Comment {
+                notification_id: value.notification_id as UniqueId,
+                timestamp: Timestamp::from_grpc(
+                    value
+                        .timestamp
+                        .ok_or(Error::invalid_format("Timestamp not provided"))?,
+                )?,
+                post_id: not.post_id as UniqueId,
+                commend_id: not.comment_id as UniqueId,
+                sender_id: not.sender_id,
             }),
         }
     }
@@ -317,6 +353,23 @@ impl GrpcDomainType for Notification {
                     },
                 )),
             }),
+            Notification::Comment {
+                notification_id,
+                timestamp,
+                post_id,
+                commend_id,
+                sender_id,
+            } => Ok(grpc::Notification {
+                notification_id: notification_id as u64,
+                timestamp: Some(timestamp.into_grpc()?),
+                notification: Some(grpc::notification::Notification::Comment(
+                    grpc::CommentNotification {
+                        post_id: post_id as u64,
+                        comment_id: commend_id as u64,
+                        sender_id,
+                    },
+                )),
+            }),
         }
     }
 }
@@ -351,3 +404,63 @@ impl GrpcDomainType for UserRole {
         }
     }
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct UserSettings {
+    pub allow_invites: bool,
+    pub algo_like_weight: f32,
+    pub algo_dislike_weight: f32,
+    pub algo_comment_weight: f32,
+    pub algo_time_decay: f32,
+    pub notify_invite: bool,
+    pub notify_message: bool,
+    pub notify_comment: bool,
+}
+
+impl Default for UserSettings {
+    fn default() -> Self {
+        Self {
+            allow_invites: true,
+            algo_like_weight: 0.55,
+            algo_dislike_weight: 0.5,
+            algo_comment_weight: 0.8,
+            algo_time_decay: 0.4,
+            notify_invite: true,
+            notify_message: true,
+            notify_comment: true,
+        }
+    }
+}
+
+impl GrpcDomainType for UserSettings {
+    type Type = grpc::UserSettings;
+
+    fn from_grpc(value: Self::Type) -> Result<Self, Error> {
+        Ok(Self {
+            allow_invites: value.allow_invites,
+            algo_like_weight: value.algo_like_weight,
+            algo_dislike_weight: value.algo_dislike_weight,
+            algo_comment_weight: value.algo_comment_weight,
+            algo_time_decay: value.algo_time_decay,
+            notify_invite: value.notify_invite,
+            notify_message: value.notify_message,
+            notify_comment: value.notify_comment,
+        })
+    }
+
+    fn into_grpc(self) -> Result<Self::Type, Error> {
+        Ok(grpc::UserSettings {
+            reset_algo_tags: Vec::new(),
+            allow_invites: self.allow_invites,
+            algo_like_weight: self.algo_like_weight,
+            algo_dislike_weight: self.algo_dislike_weight,
+            algo_comment_weight: self.algo_comment_weight,
+            algo_time_decay: self.algo_time_decay,
+            notify_invite: self.notify_invite,
+            notify_message: self.notify_message,
+            notify_comment: self.notify_comment,
+        })
+    }
+}
+
+impl JsonDatabaseDomainType for UserSettings {}

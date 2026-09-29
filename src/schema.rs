@@ -130,6 +130,7 @@ diesel::table! {
         notifications -> Jsonb,
         created_at -> Timestamptz,
         embedding -> Nullable<Vector>,
+        settings -> Jsonb,
     }
 }
 

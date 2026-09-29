@@ -1,14 +1,13 @@
 use crate::database::channel as ch_db;
 use crate::database::message as msg_db;
 use crate::error::Error;
-use crate::logic::user;
 use crate::logic::user::push_notifications;
-use crate::schema::{channel_members, channels, messages};
+use crate::schema::{channel_members, channels, messages, users};
 use crate::state::database::DatabaseConnection;
 use crate::state::id_factory::IdFactory;
 use crate::types::chat::{Channel, ChannelPermission, Message};
 use crate::types::common::Timestamp;
-use crate::types::user::Notification;
+use crate::types::user::{Notification, UserSettings};
 use crate::types::{DatabaseDomainType, UniqueId};
 use crate::utils;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, SelectableHelper};
@@ -54,23 +53,36 @@ pub async fn create_channel(
                     .await?;
             }
 
-            for user_id in channel.members.keys() {
-                if user_id == owner {
-                    continue;
-                }
+            let invited_member_ids: Vec<&String> = channel
+                .members
+                .keys()
+                .filter(|&user_id| user_id != owner)
+                .collect();
 
-                push_notifications(
-                    database,
-                    user_id,
-                    [Notification::Invite {
-                        notification_id: ids.next_id()?,
-                        timestamp: Timestamp::now(),
-                        channel_id: channel.channel_id,
-                        invited_by: owner.to_string(),
-                        uninvited: false,
-                    }],
-                )
-                .await?;
+            if !invited_member_ids.is_empty() {
+                let user_settings_rows: Vec<(String, serde_json::Value)> = users::table
+                    .filter(users::user_id.eq_any(&invited_member_ids))
+                    .select((users::user_id, users::settings))
+                    .load(database)
+                    .await?;
+
+                for (user_id, settings_json) in user_settings_rows {
+                    let settings = UserSettings::from_db(settings_json)?;
+
+                    push_notifications(
+                        database,
+                        &user_id,
+                        [Notification::Invite {
+                            notification_id: ids.next_id()?,
+                            timestamp: Timestamp::now(),
+                            channel_id: channel.channel_id,
+                            invited_by: owner.to_string(),
+                            uninvited: false,
+                        }],
+                        &settings,
+                    )
+                    .await?;
+                }
             }
 
             Ok::<Channel, Error>(channel)
@@ -120,13 +132,8 @@ pub async fn invite(
             }
 
             let permission = get_channel_member_perm(database, channel_id, user_id).await?;
-
             if permission != ChannelPermission::Manager {
                 return Err(Error::restricted("Only channel managers can invite users"));
-            }
-
-            if !user::exists(database, invited_user_id).await? {
-                return Err(Error::not_found("User not found"));
             }
 
             let already_member = channel_members::table
@@ -141,6 +148,16 @@ pub async fn invite(
             if already_member {
                 return Err(Error::already_exists("User is already in channel"));
             }
+
+            let settings_json: serde_json::Value = users::table
+                .find(invited_user_id)
+                .select(users::settings)
+                .first(database)
+                .await
+                .optional()?
+                .ok_or(Error::not_found("User not found"))?;
+
+            let invited_user_settings = UserSettings::from_db(settings_json)?;
 
             let member = ch_db::ChannelMember {
                 channel_id,
@@ -170,6 +187,7 @@ pub async fn invite(
                     invited_by: user_id.to_string(),
                     uninvited: false,
                 }],
+                &invited_user_settings,
             )
             .await?;
 
@@ -192,7 +210,6 @@ pub async fn uninvite(
             }
 
             let permission = get_channel_member_perm(database, channel_id, user_id).await?;
-
             let is_self_uninvite = user_id == uninvited_user_id;
 
             if !is_self_uninvite && permission != ChannelPermission::Manager {
@@ -237,6 +254,16 @@ pub async fn uninvite(
             .execute(database)
             .await?;
 
+            let settings_json: serde_json::Value = users::table
+                .find(uninvited_user_id)
+                .select(users::settings)
+                .first(database)
+                .await
+                .optional()?
+                .ok_or(Error::not_found("User not found"))?;
+
+            let uninvited_user_settings = UserSettings::from_db(settings_json)?;
+
             push_notifications(
                 database,
                 uninvited_user_id,
@@ -247,6 +274,7 @@ pub async fn uninvite(
                     invited_by: user_id.to_string(),
                     uninvited: true,
                 }],
+                &uninvited_user_settings,
             )
             .await?;
 
@@ -396,14 +424,24 @@ pub async fn send(
                     err => err.into(),
                 })?;
 
-            for member in channel.members.keys() {
-                if member == &message.user_id {
-                    continue;
-                }
+            let recipient_ids: Vec<&String> = channel
+                .members
+                .keys()
+                .filter(|&id| id != &message.user_id)
+                .collect();
+
+            let user_rows: Vec<(String, serde_json::Value)> = users::table
+                .filter(users::user_id.eq_any(&recipient_ids))
+                .select((users::user_id, users::settings))
+                .load(database)
+                .await?;
+
+            for (member_id, settings_json) in user_rows {
+                let settings = UserSettings::from_db(settings_json)?;
 
                 push_notifications(
                     database,
-                    member,
+                    &member_id,
                     [Notification::Message {
                         notification_id: ids.next_id()?,
                         timestamp: Timestamp::now(),
@@ -411,6 +449,7 @@ pub async fn send(
                         sender_id: message.user_id.clone(),
                         message: message.clone(),
                     }],
+                    &settings,
                 )
                 .await?;
             }

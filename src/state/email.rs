@@ -12,14 +12,14 @@ use tera::{Context, Tera};
 const EMAIL_CODE_TEMPLATE_NAME: &str = "email_code_tmp";
 
 #[derive(Clone, Debug)]
-pub struct EmailRegister {
-    register: FastDashMap<String, EmailEntry>,
+pub struct EmailRegistry {
+    registry: FastDashMap<String, EmailEntry>,
     trans: AsyncSmtpTransport<Tokio1Executor>,
     tera: Tera,
     token_len: usize,
 }
 
-impl EmailRegister {
+impl EmailRegistry {
     pub async fn new() -> Self {
         let config = config::get();
 
@@ -54,11 +54,11 @@ impl EmailRegister {
             .await
             .expect("Failed to read email code template");
 
-        tera.add_raw_template(EMAIL_CODE_TEMPLATE_NAME, &email_code_tmp)
+        tera.add_raw_templates([(EMAIL_CODE_TEMPLATE_NAME, &email_code_tmp)])
             .expect("Failed to add email template");
 
         Self {
-            register: FastDashMap::with_capacity_and_hasher(10, Default::default()),
+            registry: FastDashMap::with_capacity_and_hasher(10, Default::default()),
             trans: trans.credentials(creds).build(),
             tera,
             token_len: config.email.verify_token_len,
@@ -103,7 +103,7 @@ impl EmailRegister {
 
         self.trans.send(msg).await.expect("Failed to send E-Mail");
 
-        self.register.insert(email, EmailEntry { token, expires });
+        self.registry.insert(email, EmailEntry { token, expires });
 
         Ok(())
     }
@@ -117,32 +117,32 @@ impl EmailRegister {
             return Err(Error::unauthorized("Invalid token"));
         }
 
-        self.register.remove(email);
+        self.registry.remove(email);
 
         Ok(())
     }
 
     pub fn get_email_token(&self, email: &String) -> Option<String> {
-        self.register.get(email).map(|e| e.token.clone())
+        self.registry.get(email).map(|e| e.token.clone())
     }
 
     pub fn maintain(&self) {
-        for entry in &self.register {
+        for entry in &self.registry {
             if entry.expires
                 <= SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .expect("Failed to get current time")
                     .as_secs()
             {
-                self.register.remove(entry.key());
+                self.registry.remove(entry.key());
             }
         }
 
-        self.register.shrink_to_fit();
+        self.registry.shrink_to_fit();
     }
 
     pub fn print_status(&self) {
-        tracing::info!("Email Register Length: {}", self.register.len());
+        tracing::info!("Email Register Length: {}", self.registry.len());
     }
 
     fn build_email_code_template(&self, token: &str, exp: &str) -> Result<(String, String), Error> {

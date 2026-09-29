@@ -9,15 +9,16 @@ CREATE TYPE user_role AS ENUM (
 
 CREATE TABLE users
 (
-    user_id       TEXT PRIMARY KEY,
+    user_id       TEXT        PRIMARY KEY,
     username      TEXT        NOT NULL,
     email         TEXT        NOT NULL,
     password      TEXT        NOT NULL,
     role          user_role   NOT NULL,
     icon          JSONB       NOT NULL,
-    notifications JSONB       NOT NULL DEFAULT '[]'::jsonb,
+    notifications JSONB       NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL,
     embedding     vector(384),
+    settings      JSONB       NOT NULL,
 
     CONSTRAINT users_email_unique UNIQUE (email)
 );

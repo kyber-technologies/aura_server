@@ -6,7 +6,7 @@ use crate::schema::{channel_members, channels, user_blocks, user_follows, users}
 use crate::state::database::DatabaseConnection;
 use crate::types::common::Timestamp;
 use crate::types::resource::{ResourceDescriptor, ResourceId, ResourceMeta, ResourceNamespace};
-use crate::types::user::{Notification, Notifications, User, UserProfile, UserRole};
+use crate::types::user::{Notification, Notifications, User, UserProfile, UserRole, UserSettings};
 use crate::types::{DatabaseDomainType, FastMap, FastSet, UniqueId};
 use crate::utils::escape_like_pattern;
 use crate::{auth, config, utils};
@@ -90,6 +90,7 @@ pub async fn delete(database: &mut DatabaseConnection, user_id: &str) -> Result<
 pub async fn update(database: &mut DatabaseConnection, user: User) -> Result<(), Error> {
     let icon = user.icon.into_db()?;
     let notifications = user.notifications.into_db()?;
+    let settings = user.settings.into_db()?;
 
     diesel::update(users::table.find(&user.user_id))
         .set((
@@ -99,6 +100,7 @@ pub async fn update(database: &mut DatabaseConnection, user: User) -> Result<(),
             users::role.eq(&user.role),
             users::icon.eq(icon),
             users::notifications.eq(notifications),
+            users::settings.eq(settings),
         ))
         .execute(database)
         .await?;
@@ -331,9 +333,11 @@ pub async fn push_notifications(
     database: &mut DatabaseConnection,
     user_id: &str,
     new_notifications: impl IntoIterator<Item = Notification>,
+    settings: &UserSettings,
 ) -> Result<(), Error> {
     let config = config::get();
     let now = Timestamp::now();
+    let expiration_ms = config.service.notification_expiration_time * 60 * 60 * 1000;
 
     let existing = users::table
         .find(user_id)
@@ -345,17 +349,20 @@ pub async fn push_notifications(
 
     let mut notifications = Notifications::from_db(existing)?;
 
-    notifications.0.extend(new_notifications);
+    for notification in new_notifications {
+        if notification.should_notify(settings) {
+            notifications.0.push(notification);
+        }
+    }
 
     notifications.0.retain(|notification| {
-        now.0.timestamp_millis() - notification.timestamp().0.timestamp_millis()
-            < config.service.notification_expiration_time * 60 * 60 * 1000
+        now.0.timestamp_millis() - notification.timestamp().0.timestamp_millis() < expiration_ms
     });
 
-    let notifications = notifications.into_db()?;
+    let notifications_db = notifications.into_db()?;
 
     diesel::update(users::table.find(user_id))
-        .set(users::notifications.eq(notifications))
+        .set(users::notifications.eq(notifications_db))
         .execute(database)
         .await?;
 
@@ -453,6 +460,7 @@ pub async fn create_admin(database: &mut DatabaseConnection) -> Result<(), Error
                     key: "admin".to_string(),
                 },
                 notifications: Notifications(Vec::new()),
+                settings: UserSettings::default(),
                 channels: Vec::new(),
                 followers: Vec::new(),
                 following: Vec::new(),

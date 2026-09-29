@@ -7,6 +7,7 @@ use crate::state::database::DatabaseConnection;
 use crate::state::embedder::TextEmbedder;
 use crate::types::common::Timestamp;
 use crate::types::posting::{Post, PostReaction};
+use crate::types::user::UserSettings;
 use crate::types::{DatabaseDomainType, FastMap, FastSet, UniqueId};
 use crate::utils;
 use crate::utils::escape_like_pattern;
@@ -20,6 +21,7 @@ pub async fn create(
     database: &mut DatabaseConnection,
     embedder: &TextEmbedder,
     post: Post,
+    settings: &UserSettings,
 ) -> Result<Post, Error> {
     database
         .transaction(async |database| {
@@ -41,7 +43,7 @@ pub async fn create(
 
             let vector = if let Some(text) = post.content.as_text() {
                 embedder
-                    .embed(&[text])
+                    .embed(vec![text.to_string()])
                     .await?
                     .into_iter()
                     .next()
@@ -72,6 +74,7 @@ pub async fn create(
                         &post.author_id,
                         &parent_vec,
                         PostInteraction::Comment,
+                        settings,
                         false,
                     )
                     .await?;
@@ -82,6 +85,7 @@ pub async fn create(
                     &post.author_id,
                     &vector,
                     PostInteraction::React,
+                    settings,
                     false,
                 )
                 .await?;
@@ -286,6 +290,7 @@ pub async fn react(
     post_id: UniqueId,
     user_id: &str,
     reaction: PostReaction,
+    settings: &UserSettings,
 ) -> Result<(), Error> {
     database
         .transaction(async |database| {
@@ -350,8 +355,15 @@ pub async fn react(
                 };
 
                 if let Some((interaction, revert)) = action {
-                    feed::update_user_vector(database, user_id, &post_vec, interaction, revert)
-                        .await?;
+                    feed::update_user_vector(
+                        database,
+                        user_id,
+                        &post_vec,
+                        interaction,
+                        settings,
+                        revert,
+                    )
+                    .await?;
                 }
             }
 

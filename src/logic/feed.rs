@@ -2,7 +2,9 @@ use crate::database::posting::FeedCandidateRow;
 use crate::error::Error;
 use crate::schema::{post_reactions, posts, users};
 use crate::state::database::DatabaseConnection;
+use crate::state::embedder::TextEmbedder;
 use crate::types::posting::PostReaction;
+use crate::types::user::UserSettings;
 use crate::types::{FastMap, UniqueId};
 use crate::utils;
 use chrono::{DateTime, Utc};
@@ -15,6 +17,7 @@ pub async fn fetch_feed(
     database: &mut DatabaseConnection,
     user_id: &str,
     user_vector: Option<Vector>,
+    settings: &UserSettings,
     limit: usize,
     index: usize,
 ) -> Result<Vec<UniqueId>, Error> {
@@ -40,24 +43,30 @@ pub async fn fetch_feed(
 
     let candidates = fetch_candidates(database, user_id, &vector_param).await?;
 
+    let decay_exponent = 1.0 + (settings.algo_time_decay.clamp(0.0, 1.0) * 1.5);
+
     let mut scored_posts: Vec<ScoredPost> = candidates
         .into_iter()
-        .filter(|candidate| candidate.author_id != user_id) // Exclude own posts
+        .filter(|candidate| candidate.author_id != user_id)
         .map(|candidate| {
-            let total_interactions = (candidate.likes + candidate.dislikes) as f32;
+            let weighted_likes = candidate.likes as f32 * settings.algo_like_weight.clamp(0.0, 1.0);
+            let weighted_dislikes =
+                candidate.dislikes as f32 * settings.algo_dislike_weight.clamp(0.0, 1.0);
+            let total_interactions = weighted_likes + weighted_dislikes;
+
             let balance_penalty = if total_interactions > 0.0 {
-                1.0 - ((candidate.likes - candidate.dislikes).abs() as f32
-                    / (total_interactions + 1.0))
+                1.0 - ((weighted_likes - weighted_dislikes).abs() / (total_interactions + 1.0))
             } else {
                 0.5
             };
 
             let controversy_score = total_interactions * balance_penalty;
+
             let base_content_score = (candidate.vector_sim * 2.0) + controversy_score;
             let weighted_score = candidate.social_weight * base_content_score;
 
             let hours_old = (now - candidate.created_at).num_minutes() as f32 / 60.0;
-            let time_decay = (hours_old + 2.0).powf(1.6);
+            let time_decay = (hours_old + 2.0).powf(decay_exponent);
 
             let final_score = weighted_score / time_decay;
 
@@ -241,9 +250,10 @@ pub async fn update_user_vector(
     user_id: &str,
     post_vector: &Vector,
     interaction: PostInteraction,
+    settings: &UserSettings,
     revert: bool,
 ) -> Result<(), Error> {
-    let mut weight = interaction.weight();
+    let mut weight = interaction.weight(settings);
 
     if revert {
         weight = -weight;
@@ -304,6 +314,53 @@ pub async fn update_user_vector(
     Ok(())
 }
 
+pub async fn reset_user_vector(
+    database: &mut DatabaseConnection,
+    user_id: &str,
+) -> Result<(), Error> {
+    diesel::update(users::table.filter(users::user_id.eq(user_id)))
+        .set(users::embedding.eq(None::<Vector>))
+        .execute(database)
+        .await?;
+
+    Ok(())
+}
+
+pub async fn init_user_vector(
+    database: &mut DatabaseConnection,
+    embedder: &TextEmbedder,
+    user_id: &str,
+    tags: Vec<String>,
+) -> Result<(), Error> {
+    let dim = 384;
+    let mut sum_vec = vec![0.0f32; dim];
+    let count = tags.len() as f32;
+
+    for vec in embedder.embed(tags).await? {
+        for (i, val) in vec.as_slice().iter().enumerate() {
+            sum_vec[i] += val;
+        }
+    }
+
+    let mut avg_vec: Vec<f32> = sum_vec.into_iter().map(|val| val / count).collect();
+    let magnitude: f32 = avg_vec.iter().map(|v| v * v).sum::<f32>().sqrt();
+
+    if magnitude > 0.0 {
+        for val in avg_vec.iter_mut() {
+            *val /= magnitude;
+        }
+    }
+
+    let initial_vector = Vector::from(avg_vec);
+
+    diesel::update(users::table.filter(users::user_id.eq(user_id)))
+        .set(users::embedding.eq(Some(initial_vector)))
+        .execute(database)
+        .await?;
+
+    Ok(())
+}
+
 pub struct FeedCandidate {
     pub post_id: UniqueId,
     pub created_at: DateTime<Utc>,
@@ -326,10 +383,10 @@ pub enum PostInteraction {
 }
 
 impl PostInteraction {
-    pub fn weight(&self) -> f32 {
+    pub fn weight(&self, settings: &UserSettings) -> f32 {
         match self {
-            PostInteraction::React => 0.5,
-            PostInteraction::Comment => 0.8,
+            PostInteraction::React => settings.algo_like_weight.clamp(0.0, 1.0),
+            PostInteraction::Comment => settings.algo_comment_weight.clamp(0.0, 1.0),
         }
     }
 }

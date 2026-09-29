@@ -38,6 +38,7 @@ impl Service {
             &mut database,
             &user.user_id,
             user_vector,
+            &user.settings,
             req.limit as usize,
             req.index as usize,
         )
@@ -71,6 +72,7 @@ impl Service {
                 reactions: Default::default(),
                 reaction: PostReaction::None,
             },
+            &user.settings,
         )
         .await?;
 
@@ -171,6 +173,7 @@ impl Service {
             args.post_id as UniqueId,
             &user.user_id,
             PostReaction::from_grpc(args.reaction())?,
+            &user.settings,
         )
         .await?;
 

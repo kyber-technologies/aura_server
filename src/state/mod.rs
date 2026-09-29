@@ -2,7 +2,7 @@ use crate::config;
 use crate::error::Error;
 use crate::state::database::{Database, DatabaseConnection};
 use crate::state::id_factory::IdFactory;
-use email::EmailRegister;
+use email::EmailRegistry;
 use embedder::TextEmbedder;
 use std::sync::Arc;
 use std::time::Duration;
@@ -16,7 +16,7 @@ pub mod id_factory;
 #[derive(Clone)]
 pub struct ServerState {
     database: Database,
-    emails: Arc<EmailRegister>,
+    emails: Arc<EmailRegistry>,
     exit: Arc<Notify>,
     embedder: TextEmbedder,
     id_factory: IdFactory,
@@ -29,7 +29,7 @@ impl ServerState {
         tracing::info!("Testing text embedder...");
         // Embed test data to download any missing models
         embedder
-            .embed(&["test"])
+            .embed(vec!["test".to_string()])
             .await
             .expect("Failed to embed test data");
 
@@ -41,7 +41,7 @@ impl ServerState {
 
         Self {
             database: Database::connect().await,
-            emails: Arc::new(EmailRegister::new().await),
+            emails: Arc::new(EmailRegistry::new().await),
             exit: Arc::new(Notify::new()),
             embedder,
             id_factory: IdFactory::new(machine_id.parse().expect("Invalid machine ID")),
@@ -78,7 +78,7 @@ impl ServerState {
         self.database.get().await
     }
 
-    pub fn emails(&self) -> &EmailRegister {
+    pub fn emails(&self) -> &EmailRegistry {
         &self.emails
     }
 
@@ -140,6 +140,22 @@ impl ServerState {
         crate::user::create(&mut database, crate::testing::admin_user(true))
             .await
             .expect("Failed to create admin test user");
+
+        tracing::info!("Cleaning resource directory...");
+        let mut res_entries = tokio::fs::read_dir(&config::get().service.resource_dir)
+            .await
+            .map_err(|e| Error::internal(format!("Failed to read resource directory: {}", e)))?;
+
+        while let Some(entry) = res_entries.next_entry().await.map_err(|err| {
+            Error::internal(format!("Failed to read resource directory entry: {err}"))
+        })? {
+            // Don't delete the built-in "aura" directory
+            if entry.file_name() != "aura" {
+                tokio::fs::remove_dir_all(entry.path()).await.map_err(|e| {
+                    Error::internal(format!("Failed to remove resource directory: {}", e))
+                })?;
+            }
+        }
 
         Ok(())
     }

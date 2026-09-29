@@ -1,11 +1,11 @@
 use crate::auth;
 use crate::error::Error;
-use crate::logic::user;
+use crate::logic::{feed, user};
 use crate::state::ServerState;
 use crate::types::GrpcDomainType;
 use crate::types::common::Timestamp;
 use crate::types::resource::ResourceId;
-use crate::types::user::{Notifications, User, UserRole};
+use crate::types::user::{Notifications, User, UserRole, UserSettings};
 use crate::utils::ConvertHashMap;
 use aura_rust::common::v1::ErrorCode;
 use aura_rust::user::v1::user_service_server::UserService;
@@ -87,8 +87,24 @@ impl Service {
             .emails()
             .verify_email(&args.email, args.verification_token)?;
 
+        let mut database = self.state.database().await?;
+
+        let settings = args
+            .settings
+            .ok_or(Error::invalid_format("Settings not provided"))?;
+
+        if settings.reset_algo_tags.is_empty() {
+            return Err(Error::invalid_format(
+                "Reset algorithm tags cannot be empty",
+            ));
+        }
+
+        let tags = settings.reset_algo_tags.clone();
+
+        let settings = UserSettings::from_grpc(settings)?;
+
         let mut user = User {
-            user_id: args.user_id,
+            user_id: args.user_id.clone(),
             username: args.username,
             email: args.email.clone(),
             password: args.password,
@@ -96,6 +112,7 @@ impl Service {
             created_at: Timestamp::now(),
             icon: ResourceId::default_user_icon(),
             notifications: Notifications(Vec::new()),
+            settings: settings.clone(),
             channels: Vec::new(),
             followers: Vec::new(),
             following: Vec::new(),
@@ -103,7 +120,9 @@ impl Service {
 
         user.password = auth::hash(user.password)?;
 
-        user::create(&mut self.state.database().await?, user).await?;
+        user::create(&mut database, user).await?;
+
+        feed::init_user_vector(&mut database, self.state.embedder(), &args.user_id, tags).await?;
 
         Ok(CreateResponse { error: None })
     }
@@ -127,6 +146,25 @@ impl Service {
         let (mut user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
 
+        let settings = args
+            .settings
+            .ok_or(Error::invalid_format("Settings not provided"))?;
+
+        let reset_algo_tags = settings.reset_algo_tags.clone();
+
+        let settings = UserSettings::from_grpc(settings)?;
+
+        if !reset_algo_tags.is_empty() {
+            feed::reset_user_vector(&mut database, &user.user_id).await?;
+            feed::init_user_vector(
+                &mut database,
+                self.state.embedder(),
+                &user.user_id,
+                reset_algo_tags,
+            )
+            .await?;
+        }
+
         user.username = args.username.unwrap_or(user.username);
         user.email = args.email.unwrap_or(user.email);
         user.password = args
@@ -134,6 +172,7 @@ impl Service {
             .map(auth::hash)
             .unwrap_or(Ok(user.password))
             .map_err(|err| Error::internal(format!("Hashing password failed: {err}")))?;
+        user.settings = settings;
 
         user::update(&mut database, user).await?;
 

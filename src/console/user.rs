@@ -4,7 +4,7 @@ use crate::logic::user;
 use crate::state::ServerState;
 use crate::types::common::Timestamp;
 use crate::types::resource::ResourceId;
-use crate::types::user::{Notifications, User, UserRole};
+use crate::types::user::{Notifications, User, UserRole, UserSettings};
 use no_pico_args::Arguments;
 use std::pin::Pin;
 
@@ -38,6 +38,7 @@ pub const CREATE: Command = Command {
                 created_at: Timestamp::now(),
                 icon: ResourceId::default_user_icon(),
                 notifications: Notifications(Vec::new()),
+                settings: UserSettings::default(),
                 channels: Vec::new(),
                 followers: Vec::new(),
                 following: Vec::new(),
