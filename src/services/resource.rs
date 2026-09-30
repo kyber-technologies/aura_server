@@ -30,6 +30,8 @@ impl Service {
         &self,
         request: Request<Streaming<UploadRequest>>,
     ) -> Result<UploadResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
         let mut stream = SafeStreaming::new(request.into_inner());
@@ -108,6 +110,8 @@ impl Service {
         &self,
         request: Request<DownloadRequest>,
     ) -> Result<BoxStream<DownloadResponse>, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
 
         let (user, _) = auth::verify(&mut database, &request).await?;
@@ -144,6 +148,8 @@ impl Service {
     }
 
     async fn _meta(&self, request: Request<MetaRequest>) -> Result<MetaResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();

@@ -27,6 +27,8 @@ impl Service {
     }
 
     async fn _exists(&self, request: Request<ExistsRequest>) -> Result<ExistsResponse, Error> {
+        self.state.throttle(&request)?;
+
         let user_id = request.into_inner().user_id;
         let exists = user::exists(&mut self.state.database().await?, &user_id).await?;
 
@@ -40,6 +42,8 @@ impl Service {
     }
 
     async fn _auth(&self, request: Request<AuthRequest>) -> Result<AuthResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
         let verify = auth::verify(&mut database, &request).await;
         let args = request.into_inner();
@@ -73,6 +77,8 @@ impl Service {
         &self,
         request: Request<VerifyEmailRequest>,
     ) -> Result<VerifyEmailResponse, Error> {
+        self.state.throttle(&request)?;
+
         let args = request.into_inner();
 
         self.state.emails().register_email(args.email).await?;
@@ -81,6 +87,8 @@ impl Service {
     }
 
     async fn _create(&self, request: Request<CreateRequest>) -> Result<CreateResponse, Error> {
+        self.state.throttle(&request)?;
+
         let args = request.into_inner();
 
         self.state
@@ -128,6 +136,8 @@ impl Service {
     }
 
     async fn _delete(&self, request: Request<DeleteRequest>) -> Result<DeleteResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
 
         let (user, _) = auth::verify(&mut database, &request).await?;
@@ -141,6 +151,8 @@ impl Service {
     }
 
     async fn _update(&self, request: Request<UpdateRequest>) -> Result<UpdateResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
 
         let (mut user, _) = auth::verify(&mut database, &request).await?;
@@ -180,6 +192,8 @@ impl Service {
     }
 
     async fn _get(&self, request: Request<GetRequest>) -> Result<GetResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
 
         auth::verify(&mut database, &request).await?;
@@ -194,6 +208,8 @@ impl Service {
     }
 
     async fn _search(&self, request: Request<SearchRequest>) -> Result<SearchResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
         auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
@@ -208,6 +224,8 @@ impl Service {
     }
 
     async fn _block(&self, request: Request<BlockRequest>) -> Result<BlockResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
         let BlockRequest { user_id, block } = request.into_inner();
@@ -221,6 +239,8 @@ impl Service {
         &self,
         request: Request<IsBlockedRequest>,
     ) -> Result<IsBlockedResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
         let block_user_id = request.into_inner().user_id;
@@ -233,6 +253,8 @@ impl Service {
     }
 
     async fn _follow(&self, request: Request<FollowRequest>) -> Result<FollowResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();

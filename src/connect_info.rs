@@ -11,9 +11,16 @@ impl Interceptor for ConnectInfoInterceptor {
         let addr = request.remote_addr().expect("Failed to get remote address");
 
         request.metadata_mut().insert(
+            "forwarded-addr",
+            AsciiMetadataValue::from_str(&format!("{addr}")).map_err(|err| {
+                Status::internal(format!("Failed to build metadata for address: {err}"))
+            })?,
+        );
+
+        request.metadata_mut().insert(
             "forwarded",
             AsciiMetadataValue::from_str(&format!("for={addr}")).map_err(|err| {
-                Status::internal(format!("Failed to get metadata for address: {err}"))
+                Status::internal(format!("Failed to build metadata for address: {err}"))
             })?,
         );
 

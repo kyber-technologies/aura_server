@@ -69,7 +69,8 @@ pub struct RuntimeConfig {
     pub event_interval: u32,
     pub worker_threads: usize,
     pub max_blocking_threads: usize,
-    pub maintain_interval: u64,
+    #[serde(with = "crate::utils::serde_duration")]
+    pub maintain_interval: Duration,
 }
 
 impl Default for RuntimeConfig {
@@ -81,7 +82,7 @@ impl Default for RuntimeConfig {
             event_interval: 61,
             worker_threads: 4,
             max_blocking_threads: 256,
-            maintain_interval: 60 * 10,
+            maintain_interval: Duration::from_secs(60 * 10),
         }
     }
 }
@@ -158,7 +159,7 @@ pub struct NetworkConfig {
     #[serde(with = "crate::utils::serde_duration")]
     pub tcp_keepalive_interval: Duration,
     pub tcp_keepalive_retries: u32,
-    pub service_cooldowns: FastMap<String, String>,
+    pub method_cooldowns: FastMap<String, String>,
 }
 
 impl Default for NetworkConfig {
@@ -190,7 +191,7 @@ impl Default for NetworkConfig {
             tcp_keepalive: Duration::from_secs(60),
             tcp_keepalive_interval: Duration::from_secs(10),
             tcp_keepalive_retries: 3,
-            service_cooldowns: FastMap::default(),
+            method_cooldowns: FastMap::from_iter([]),
         }
     }
 }

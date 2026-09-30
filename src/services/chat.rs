@@ -28,6 +28,8 @@ impl Service {
         &self,
         request: Request<CreateChannelRequest>,
     ) -> Result<CreateChannelResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
 
         let (user, _) = auth::verify(&mut database, &request).await?;
@@ -71,6 +73,8 @@ impl Service {
         &self,
         request: Request<DeleteChannelRequest>,
     ) -> Result<DeleteChannelResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
@@ -84,6 +88,8 @@ impl Service {
         &self,
         request: Request<SetUserPermRequest>,
     ) -> Result<SetUserPermResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
@@ -103,6 +109,8 @@ impl Service {
     }
 
     async fn _invite(&self, request: Request<InviteRequest>) -> Result<InviteResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
@@ -131,6 +139,8 @@ impl Service {
     }
 
     async fn _read(&self, request: Request<ReadRequest>) -> Result<ReadResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
 
         let (user, _) = auth::verify(&mut database, &request).await?;
@@ -166,6 +176,8 @@ impl Service {
     }
 
     async fn _send(&self, request: Request<SendRequest>) -> Result<SendResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
         let ids = self.state.id_factory();
 
@@ -210,6 +222,8 @@ impl Service {
         &self,
         request: Request<DeleteMessageRequest>,
     ) -> Result<DeleteMessageResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
 
         let (user, _) = auth::verify(&mut database, &request).await?;

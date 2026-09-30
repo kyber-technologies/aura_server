@@ -26,6 +26,8 @@ impl Service {
     }
 
     async fn _feed(&self, request: Request<FeedRequest>) -> Result<FeedResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
         let req = request.into_inner();
@@ -53,6 +55,8 @@ impl Service {
     }
 
     async fn _publish(&self, request: Request<PublishRequest>) -> Result<PublishResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
@@ -86,6 +90,8 @@ impl Service {
         &self,
         request: Request<UnpublishRequest>,
     ) -> Result<UnpublishResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
@@ -96,6 +102,8 @@ impl Service {
     }
 
     async fn _get(&self, request: Request<GetRequest>) -> Result<GetResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
@@ -110,6 +118,8 @@ impl Service {
     }
 
     async fn _get_of(&self, request: Request<GetOfRequest>) -> Result<GetOfResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
@@ -139,6 +149,8 @@ impl Service {
         &self,
         request: Request<SearchRequest>,
     ) -> Result<SearchResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();
@@ -165,6 +177,8 @@ impl Service {
     }
 
     async fn _react_to_post(&self, request: Request<ReactRequest>) -> Result<ReactResponse, Error> {
+        self.state.throttle(&request)?;
+
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
         let args = request.into_inner();

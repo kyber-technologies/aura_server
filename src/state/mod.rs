@@ -1,13 +1,15 @@
 use crate::config;
 use crate::error::Error;
+use crate::state::cooldowns::CooldownManager;
 use crate::state::database::{Database, DatabaseConnection};
 use crate::state::id_factory::IdFactory;
 use email::EmailRegistry;
 use embedder::TextEmbedder;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::Notify;
+use tonic::Request;
 
+pub mod cooldowns;
 pub mod database;
 pub mod email;
 pub mod embedder;
@@ -20,6 +22,7 @@ pub struct ServerState {
     exit: Arc<Notify>,
     embedder: TextEmbedder,
     id_factory: IdFactory,
+    cooldown: CooldownManager,
 }
 
 impl ServerState {
@@ -45,12 +48,12 @@ impl ServerState {
             exit: Arc::new(Notify::new()),
             embedder,
             id_factory: IdFactory::new(machine_id.parse().expect("Invalid machine ID")),
+            cooldown: CooldownManager::new(),
         }
     }
 
     pub async fn maintain(&self) {
-        let mut interval =
-            tokio::time::interval(Duration::from_secs(config::get().runtime.maintain_interval));
+        let mut interval = tokio::time::interval(config::get().runtime.maintain_interval);
 
         loop {
             tokio::select! {
@@ -58,6 +61,7 @@ impl ServerState {
                     tracing::info!("Maintaining server state...");
                     // TODO: Maintain governor
                     self.emails.maintain();
+                    self.cooldown.maintain();
                 }
 
                 _ = self.exit.notified() => {
@@ -89,6 +93,10 @@ impl ServerState {
 
     pub fn id_factory(&self) -> &IdFactory {
         &self.id_factory
+    }
+
+    pub fn throttle<T>(&self, req: &Request<T>) -> Result<(), Error> {
+        self.cooldown.throttle(req)
     }
 
     pub fn dispose(self) {
