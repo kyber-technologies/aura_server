@@ -95,8 +95,8 @@ impl ServerState {
         &self.id_factory
     }
 
-    pub fn throttle<T>(&self, req: &Request<T>) -> Result<(), Error> {
-        self.cooldown.throttle(req)
+    pub fn throttle<T>(&self, req: &Request<T>, method: &'static str) -> Result<(), Error> {
+        self.cooldown.throttle(req, method)
     }
 
     pub fn dispose(self) {

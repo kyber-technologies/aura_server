@@ -7,12 +7,12 @@ use serde::de::value::StringDeserializer;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::Instant;
-use tonic::{GrpcMethod, Request};
+use tonic::Request;
 
 #[derive(Clone)]
 pub struct CooldownManager {
     cooldowns: Arc<FastMap<String, Duration>>,
-    map: FastDashMap<(String, String), Instant>,
+    map: FastDashMap<(String, &'static str), Instant>,
 }
 
 impl CooldownManager {
@@ -38,18 +38,8 @@ impl CooldownManager {
         }
     }
 
-    pub fn throttle<T>(&self, req: &Request<T>) -> Result<(), Error> {
-        let method = req
-            .extensions()
-            .get::<GrpcMethod>()
-            .ok_or_else(|| Error::internal("gRPC method not found"))?;
-
-        let path_str = method.service();
-        let method_str = method.method();
-
-        println!("{path_str}:{method_str}");
-
-        let cooldown = match self.cooldowns.get(&format!("{path_str}:{method_str}")) {
+    pub fn throttle<T>(&self, req: &Request<T>, method: &'static str) -> Result<(), Error> {
+        let cooldown = match self.cooldowns.get(method) {
             Some(cd) => *cd,
             None => return Ok(()),
         };
@@ -61,10 +51,9 @@ impl CooldownManager {
             .to_str()
             .map_err(|err| Error::internal(format!("Failed to parse forwarded address: {err}")))?;
 
-        let formatted_path = format!("{path_str}:{method_str}");
         let now = Instant::now();
 
-        let key = (addr_str.to_string(), formatted_path);
+        let key = (addr_str.to_string(), method);
 
         match self.map.entry(key) {
             Entry::Occupied(mut entry) => {
@@ -90,7 +79,7 @@ impl CooldownManager {
         let now = Instant::now();
 
         self.map.retain(|(_, path), last_time| {
-            if let Some(&cooldown) = self.cooldowns.get(path) {
+            if let Some(&cooldown) = self.cooldowns.get(*path) {
                 *last_time + cooldown > now
             } else {
                 tracing::warn!("Method '{path}' registered but not found in cooldowns");

@@ -106,16 +106,6 @@ async fn serve(state: ServerState) {
     let addr =
         SocketAddr::from_str(config.network.address.as_str()).expect("Failed to parse address");
 
-    // Create initial admin if not present
-    user::create_admin(
-        &mut state
-            .database()
-            .await
-            .expect("Failed to get database connection"),
-    )
-    .await
-    .expect("Failed to create admin user");
-
     let tls_config = {
         let tls_cert = tokio::fs::read_to_string(&config.network.tls_certificate)
             .await

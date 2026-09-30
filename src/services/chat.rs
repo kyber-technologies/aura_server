@@ -28,7 +28,7 @@ impl Service {
         &self,
         request: Request<CreateChannelRequest>,
     ) -> Result<CreateChannelResponse, Error> {
-        self.state.throttle(&request)?;
+        self.state.throttle(&request, "chat.create_channel")?;
 
         let mut database = self.state.database().await?;
 
@@ -73,7 +73,7 @@ impl Service {
         &self,
         request: Request<DeleteChannelRequest>,
     ) -> Result<DeleteChannelResponse, Error> {
-        self.state.throttle(&request)?;
+        self.state.throttle(&request, "chat.delete_channel")?;
 
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
@@ -88,7 +88,7 @@ impl Service {
         &self,
         request: Request<SetUserPermRequest>,
     ) -> Result<SetUserPermResponse, Error> {
-        self.state.throttle(&request)?;
+        self.state.throttle(&request, "chat.set_user_perm")?;
 
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
@@ -109,7 +109,7 @@ impl Service {
     }
 
     async fn _invite(&self, request: Request<InviteRequest>) -> Result<InviteResponse, Error> {
-        self.state.throttle(&request)?;
+        self.state.throttle(&request, "chat.invite")?;
 
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
@@ -139,7 +139,7 @@ impl Service {
     }
 
     async fn _read(&self, request: Request<ReadRequest>) -> Result<ReadResponse, Error> {
-        self.state.throttle(&request)?;
+        self.state.throttle(&request, "chat.read")?;
 
         let mut database = self.state.database().await?;
 
@@ -176,7 +176,7 @@ impl Service {
     }
 
     async fn _send(&self, request: Request<SendRequest>) -> Result<SendResponse, Error> {
-        self.state.throttle(&request)?;
+        self.state.throttle(&request, "chat.send")?;
 
         let mut database = self.state.database().await?;
         let ids = self.state.id_factory();
@@ -222,7 +222,7 @@ impl Service {
         &self,
         request: Request<DeleteMessageRequest>,
     ) -> Result<DeleteMessageResponse, Error> {
-        self.state.throttle(&request)?;
+        self.state.throttle(&request, "chat.delete_message")?;
 
         let mut database = self.state.database().await?;
 

@@ -26,7 +26,7 @@ impl Service {
     }
 
     async fn _feed(&self, request: Request<FeedRequest>) -> Result<FeedResponse, Error> {
-        self.state.throttle(&request)?;
+        self.state.throttle(&request, "posting.feed")?;
 
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
@@ -55,7 +55,7 @@ impl Service {
     }
 
     async fn _publish(&self, request: Request<PublishRequest>) -> Result<PublishResponse, Error> {
-        self.state.throttle(&request)?;
+        self.state.throttle(&request, "posting.publish")?;
 
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
@@ -90,7 +90,7 @@ impl Service {
         &self,
         request: Request<UnpublishRequest>,
     ) -> Result<UnpublishResponse, Error> {
-        self.state.throttle(&request)?;
+        self.state.throttle(&request, "posting.unpublish")?;
 
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
@@ -102,7 +102,7 @@ impl Service {
     }
 
     async fn _get(&self, request: Request<GetRequest>) -> Result<GetResponse, Error> {
-        self.state.throttle(&request)?;
+        self.state.throttle(&request, "posting.get")?;
 
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
@@ -118,7 +118,7 @@ impl Service {
     }
 
     async fn _get_of(&self, request: Request<GetOfRequest>) -> Result<GetOfResponse, Error> {
-        self.state.throttle(&request)?;
+        self.state.throttle(&request, "posting.get_of")?;
 
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
@@ -149,7 +149,7 @@ impl Service {
         &self,
         request: Request<SearchRequest>,
     ) -> Result<SearchResponse, Error> {
-        self.state.throttle(&request)?;
+        self.state.throttle(&request, "posting.search_posts")?;
 
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;
@@ -177,7 +177,7 @@ impl Service {
     }
 
     async fn _react_to_post(&self, request: Request<ReactRequest>) -> Result<ReactResponse, Error> {
-        self.state.throttle(&request)?;
+        self.state.throttle(&request, "posting.react_to_post")?;
 
         let mut database = self.state.database().await?;
         let (user, _) = auth::verify(&mut database, &request).await?;

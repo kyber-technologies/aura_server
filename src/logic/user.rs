@@ -9,8 +9,7 @@ use crate::types::resource::{ResourceDescriptor, ResourceId, ResourceMeta, Resou
 use crate::types::user::{Notification, Notifications, User, UserProfile, UserRole, UserSettings};
 use crate::types::{DatabaseDomainType, FastMap, FastSet, UniqueId};
 use crate::utils::escape_like_pattern;
-use crate::{auth, config, utils};
-use aura_rust::common::v1::ErrorCode;
+use crate::{config, utils};
 use diesel::{
     BoolExpressionMethods, ExpressionMethods, JoinOnDsl, OptionalExtension,
     PgTextExpressionMethods, QueryDsl, SelectableHelper,
@@ -428,50 +427,6 @@ pub async fn unfollow(
     )
     .execute(database)
     .await?;
-
-    Ok(())
-}
-
-pub async fn create_admin(database: &mut DatabaseConnection) -> Result<(), Error> {
-    if exists(database, "admin").await? {
-        match auth::auth(database, "admin".to_string(), "admin".to_string()).await {
-            Ok(_) => tracing::warn!(
-                "The initial 'admin' user has an unsecure password. Please change this immediately!"
-            ),
-
-            Err(err) => {
-                if err.code != ErrorCode::Unauthorized {
-                    return Err(err);
-                }
-            }
-        }
-    } else {
-        create(
-            database,
-            User {
-                user_id: "admin".to_string(),
-                username: "admin".to_string(),
-                email: "".to_string(),
-                password: auth::hash("admin".to_string()).expect("Failed to hash password"),
-                role: UserRole::Admin,
-                created_at: Timestamp::now(),
-                icon: ResourceId {
-                    namespace: ResourceNamespace::UserIcon,
-                    key: "admin".to_string(),
-                },
-                notifications: Notifications(Vec::new()),
-                settings: UserSettings::default(),
-                channels: Vec::new(),
-                followers: Vec::new(),
-                following: Vec::new(),
-            },
-        )
-        .await?;
-
-        tracing::info!(
-            "Created setup administrator 'admin' with password 'admin'. Please change this immediately!"
-        );
-    }
 
     Ok(())
 }
