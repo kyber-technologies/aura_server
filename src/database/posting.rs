@@ -36,6 +36,7 @@ pub struct PostData {
     pub post: Post,
     pub reaction_counts: Vec<(PostReaction, i64)>,
     pub user_reaction: PostReaction,
+    pub comments: Vec<UniqueId>,
 }
 
 #[derive(Clone, Debug, QueryableByName)]

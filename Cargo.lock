@@ -129,7 +129,7 @@ dependencies = [
 [[package]]
 name = "aura_rust"
 version = "0.1.0"
-source = "git+https://github.com/kyber-technologies/aura_proto.git#1fec720116821672a2833f3ce248472058cab920"
+source = "git+https://github.com/kyber-technologies/aura_proto.git#59a6dc39f95d435e73ae7091b82b77c8b1690422"
 dependencies = [
  "prost",
  "prost-types",

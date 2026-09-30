@@ -27,6 +27,8 @@ impl GeneralService for Service {
             version: utils::VERSION.to_string(),
             resource_chunk_size: config.service.resource_chunk_size as u32,
             item_request_limit: config.service.item_request_limit,
+            max_upload_size: config.service.max_upload_size,
+            max_channel_size: config.service.max_channel_size,
         }))
     }
 

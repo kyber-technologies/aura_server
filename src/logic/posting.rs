@@ -193,6 +193,19 @@ pub async fn get(
         }
     }
 
+    let raw_comments: Vec<(Option<UniqueId>, UniqueId)> = posts::table
+        .filter(posts::parent_id.eq_any(&found_post_ids))
+        .select((posts::parent_id, posts::post_id))
+        .load(database)
+        .await?;
+
+    let mut comments_map: FastMap<UniqueId, Vec<UniqueId>> = FastMap::default();
+    for (parent_id, comment_id) in raw_comments {
+        if let Some(pid) = parent_id {
+            comments_map.entry(pid).or_default().push(comment_id);
+        }
+    }
+
     let mut result: FastMap<UniqueId, Post> = FastMap::default();
     result.reserve(db_posts.len());
 
@@ -202,11 +215,13 @@ pub async fn get(
         let user_reaction = user_reactions_map
             .remove(&pid)
             .unwrap_or(PostReaction::None);
+        let comments = comments_map.remove(&pid).unwrap_or_default();
 
         let post_data = db::PostData {
             post,
             reaction_counts: counts,
             user_reaction,
+            comments,
         };
 
         result.insert(pid, Post::from_db(post_data)?);
@@ -245,6 +260,19 @@ pub async fn get_of(
         .await?;
 
     hydrate(database, raw_posts, requesting_user_id).await
+}
+
+pub async fn get_author(
+    database: &mut DatabaseConnection,
+    post_id: UniqueId,
+) -> Result<Option<String>, Error> {
+    posts::table
+        .filter(posts::post_id.eq(post_id))
+        .select(posts::author_id)
+        .first::<String>(database)
+        .await
+        .optional()
+        .map_err(Into::into)
 }
 
 pub async fn search(
@@ -394,6 +422,11 @@ async fn hydrate(
         .load(database)
         .await?;
 
+    let mut counts_map: FastMap<UniqueId, Vec<(PostReaction, i64)>> = FastMap::default();
+    for (pid, reaction, count) in raw_reactions {
+        counts_map.entry(pid).or_default().push((reaction, count));
+    }
+
     let user_reactions: FastMap<UniqueId, PostReaction> = if let Some(uid) = requesting_user_id {
         post_reactions::table
             .filter(post_reactions::post_id.eq_any(&post_ids))
@@ -407,9 +440,17 @@ async fn hydrate(
         FastMap::default()
     };
 
-    let mut counts_map: FastMap<UniqueId, Vec<(PostReaction, i64)>> = FastMap::default();
-    for (pid, reaction, count) in raw_reactions {
-        counts_map.entry(pid).or_default().push((reaction, count));
+    let raw_comments: Vec<(Option<UniqueId>, UniqueId)> = posts::table
+        .filter(posts::parent_id.eq_any(&post_ids))
+        .select((posts::parent_id, posts::post_id))
+        .load(database)
+        .await?;
+
+    let mut comments_map: FastMap<UniqueId, Vec<UniqueId>> = FastMap::default();
+    for (parent_id, comment_id) in raw_comments {
+        if let Some(pid) = parent_id {
+            comments_map.entry(pid).or_default().push(comment_id);
+        }
     }
 
     let mut domain_posts = Vec::with_capacity(raw_posts.len());
@@ -420,11 +461,13 @@ async fn hydrate(
             .get(&pid)
             .copied()
             .unwrap_or(PostReaction::None);
+        let comments = comments_map.remove(&pid).unwrap_or_default();
 
         let post_data = db::PostData {
             post: raw_post,
             reaction_counts,
             user_reaction,
+            comments,
         };
 
         domain_posts.push(Post::from_db(post_data)?);

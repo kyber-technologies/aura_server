@@ -71,6 +71,7 @@ impl Service {
                 parent: args.parent.map(|id| id as UniqueId),
                 reactions: Default::default(),
                 reaction: PostReaction::None,
+                comments: Vec::new(),
             },
             &user.settings,
         )

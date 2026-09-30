@@ -1,7 +1,8 @@
 CREATE TYPE resource_namespace_type AS ENUM (
     'aura',
     'user_icon',
-    'channel'
+    'channel',
+    'post'
 );
 
 CREATE TABLE resources

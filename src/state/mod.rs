@@ -56,6 +56,7 @@ impl ServerState {
             tokio::select! {
                 _ = interval.tick() => {
                     tracing::info!("Maintaining server state...");
+                    // TODO: Maintain governor
                     self.emails.maintain();
                 }
 

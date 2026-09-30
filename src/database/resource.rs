@@ -24,4 +24,6 @@ pub enum ResourceNamespaceType {
     UserIcon,
     #[db_enum(rename = "channel")]
     Channel,
+    #[db_enum(rename = "post")]
+    Post,
 }

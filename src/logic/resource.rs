@@ -1,7 +1,7 @@
 use crate::database::resource as db;
 use crate::database::resource::ResourceNamespaceType;
 use crate::error::Error;
-use crate::logic::chat;
+use crate::logic::{chat, posting};
 use crate::schema::resources;
 use crate::state::database::DatabaseConnection;
 use crate::types::DatabaseDomainType;
@@ -21,6 +21,15 @@ pub async fn create(
     database: &mut DatabaseConnection,
     desc: ResourceDescriptor,
 ) -> Result<ResourceDescriptor, Error> {
+    let max_upload_bytes = config::get().service.max_upload_size;
+
+    if desc.meta.size > max_upload_bytes {
+        return Err(Error::invalid_format(format!(
+            "Resource size ({} bytes) exceeds maximum allowed upload limit ({} bytes)",
+            desc.meta.size, max_upload_bytes
+        )));
+    }
+
     if exists(database, &desc.resource_id).await? {
         return Err(Error::already_exists("Resource already exists"));
     }
@@ -53,11 +62,7 @@ pub async fn get(
 
     for resource_id in resource_ids {
         let namespace_type = ResourceNamespaceType::from(&resource_id.namespace);
-        let namespace_id = match &resource_id.namespace {
-            ResourceNamespace::Aura => "",
-            ResourceNamespace::UserIcon => "",
-            ResourceNamespace::Channel(id) => id.as_str(),
-        };
+        let namespace_id = resource_id.namespace.namespace_id();
 
         let clause = resources::namespace_type
             .eq(namespace_type)
@@ -91,11 +96,7 @@ pub async fn exists(
 ) -> Result<bool, Error> {
     let namespace_type = ResourceNamespaceType::from(&resource_id.namespace);
 
-    let namespace_id = match &resource_id.namespace {
-        ResourceNamespace::Aura => "",
-        ResourceNamespace::UserIcon => "",
-        ResourceNamespace::Channel(id) => id.as_str(),
-    };
+    let namespace_id = resource_id.namespace.namespace_id();
 
     Ok(resources::table
         .filter(resources::namespace_type.eq(namespace_type))
@@ -128,6 +129,7 @@ pub async fn is_download_authorized(
         .ok_or(Error::not_found("Channel not found"))?
         .members
         .contains_key(user),
+        ResourceNamespace::Post(_) => true,
     })
 }
 
@@ -138,7 +140,9 @@ pub async fn is_upload_authorized(
 ) -> Result<bool, Error> {
     Ok(match &desc.resource_id.namespace {
         ResourceNamespace::Aura => false,
+
         ResourceNamespace::UserIcon => desc.resource_id.key == user_id,
+
         ResourceNamespace::Channel(channel_id) => chat::get_channel_member_perm(
             database,
             channel_id.parse().map_err(|err| {
@@ -150,6 +154,19 @@ pub async fn is_upload_authorized(
         )
         .await?
         .is_write_authorized(),
+
+        ResourceNamespace::Post(post_id) => {
+            let post_id_parsed = post_id.parse().map_err(|err| {
+                Error::internal(format!(
+                    "Failed to parse post ID from resource namespace: {err}"
+                ))
+            })?;
+
+            match posting::get_author(database, post_id_parsed).await? {
+                Some(author_id) => author_id == user_id,
+                None => false,
+            }
+        }
     })
 }
 
@@ -190,20 +207,42 @@ pub async fn write(
         .await
         .expect("Failed to create directory");
 
-    let file = fs::File::create(path).await.map_err(|e| {
+    let file = fs::File::create(&path).await.map_err(|e| {
         tracing::error!("Failed opening write file: {e}");
         Error::internal("Failed to write resource")
     })?;
 
     tokio::pin!(stream);
 
+    let max_upload_bytes = config::get().service.max_upload_size as u64;
+    let mut total_written: u64 = 0;
+
     let mut buf = BufWriter::with_capacity(config::get().service.resource_chunk_size, file);
 
-    while let Some(data) = stream.next().await {
-        buf.write(&data?).await.map_err(|e| {
+    while let Some(data_res) = stream.next().await {
+        let data = data_res?;
+        let chunk_len = data.len() as u64;
+
+        if total_written + chunk_len > max_upload_bytes {
+            drop(buf);
+            let _ = fs::remove_file(&path).await;
+
+            tracing::warn!(
+                "Aborted writing resource {:?}: payload exceeds maximum allowed upload size ({} bytes)",
+                id,
+                max_upload_bytes
+            );
+            return Err(Error::invalid_format(
+                "Uploaded stream exceeded maximum allowed file size",
+            ));
+        }
+
+        buf.write_all(&data).await.map_err(|e| {
             tracing::error!("Failed writing file: {e}");
             Error::internal("Failed to write resource")
         })?;
+
+        total_written += chunk_len;
     }
 
     buf.flush().await.map_err(|e| {
@@ -220,6 +259,7 @@ fn build_path(id: &ResourceId) -> PathBuf {
             ResourceNamespace::Aura => "aura".to_string(),
             ResourceNamespace::UserIcon => "user_icon".to_string(),
             ResourceNamespace::Channel(id) => format!("channel.{id}"),
+            ResourceNamespace::Post(id) => format!("post.{id}"),
         })
         .join(&id.key)
 }

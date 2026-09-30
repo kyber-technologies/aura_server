@@ -103,6 +103,18 @@ pub enum ResourceNamespace {
     Aura,
     UserIcon,
     Channel(String),
+    Post(String),
+}
+
+impl ResourceNamespace {
+    pub fn namespace_id(&self) -> &str {
+        match self {
+            Self::Aura => "",
+            Self::UserIcon => "",
+            Self::Channel(id) => id,
+            Self::Post(id) => id,
+        }
+    }
 }
 
 impl Display for ResourceNamespace {
@@ -111,6 +123,7 @@ impl Display for ResourceNamespace {
             Self::Aura => write!(f, "aura"),
             Self::UserIcon => write!(f, "user_icon"),
             Self::Channel(id) => write!(f, "channel:{}", id),
+            Self::Post(id) => write!(f, "post:{}", id),
         }
     }
 }
@@ -126,6 +139,7 @@ impl GrpcDomainType for ResourceNamespace {
             grpc::resource_namespace::Namespace::Aura(()) => Ok(Self::Aura),
             grpc::resource_namespace::Namespace::UserIcon(()) => Ok(Self::UserIcon),
             grpc::resource_namespace::Namespace::Channel(id) => Ok(Self::Channel(id)),
+            grpc::resource_namespace::Namespace::Post(id) => Ok(Self::Post(id)),
         }
     }
 
@@ -135,6 +149,7 @@ impl GrpcDomainType for ResourceNamespace {
                 Self::Aura => Some(grpc::resource_namespace::Namespace::Aura(())),
                 Self::UserIcon => Some(grpc::resource_namespace::Namespace::UserIcon(())),
                 Self::Channel(id) => Some(grpc::resource_namespace::Namespace::Channel(id)),
+                Self::Post(id) => Some(grpc::resource_namespace::Namespace::Post(id)),
             },
         })
     }
@@ -146,6 +161,7 @@ impl From<&ResourceNamespace> for db::ResourceNamespaceType {
             ResourceNamespace::Aura => Self::Aura,
             ResourceNamespace::UserIcon => Self::UserIcon,
             ResourceNamespace::Channel(_) => Self::Channel,
+            ResourceNamespace::Post(_) => Self::Post,
         }
     }
 }
@@ -165,6 +181,7 @@ impl DatabaseDomainType for ResourceDescriptor {
             db::ResourceNamespaceType::Aura => ResourceNamespace::Aura,
             db::ResourceNamespaceType::UserIcon => ResourceNamespace::UserIcon,
             db::ResourceNamespaceType::Channel => ResourceNamespace::Channel(value.namespace_id),
+            db::ResourceNamespaceType::Post => ResourceNamespace::Post(value.namespace_id),
         };
 
         Ok(Self {
@@ -184,6 +201,7 @@ impl DatabaseDomainType for ResourceDescriptor {
             ResourceNamespace::Aura => String::new(),
             ResourceNamespace::UserIcon => String::new(),
             ResourceNamespace::Channel(id) => id,
+            ResourceNamespace::Post(id) => id,
         };
 
         Ok(db::ResourceDescriptor {

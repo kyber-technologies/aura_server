@@ -42,6 +42,7 @@ pub const PUBLISH: Command = Command {
                     parent,
                     reactions: FastMap::default(),
                     reaction: PostReaction::None,
+                    comments: Vec::new(),
                 },
                 &user.settings,
             )

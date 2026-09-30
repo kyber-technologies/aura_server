@@ -3,7 +3,7 @@ use crate::error::Error;
 use crate::types::common::Timestamp;
 use crate::types::resource::Content;
 use crate::types::{DatabaseDomainType, FastMap, GrpcDomainType, UniqueId};
-use crate::utils::ConvertHashMap;
+use crate::utils::{ConvertHashMap, TransmuteVec};
 use aura_rust::posting::v1 as grpc;
 use diesel_derive_enum::DbEnum;
 
@@ -16,6 +16,7 @@ pub struct Post {
     pub parent: Option<UniqueId>,
     pub reactions: FastMap<PostReaction, u32>,
     pub reaction: PostReaction,
+    pub comments: Vec<UniqueId>,
 }
 
 impl GrpcDomainType for Post {
@@ -48,6 +49,7 @@ impl GrpcDomainType for Post {
                 ))
             })?,
             reaction: PostReaction::from_grpc(reaction)?,
+            comments: value.comments.transmute_vec(),
         })
     }
 
@@ -62,6 +64,7 @@ impl GrpcDomainType for Post {
                 .reactions
                 .map_convert(|r, c| Ok((r.into_grpc()?.as_str_name().to_owned(), c)))?,
             reaction: self.reaction.into_grpc()? as i32,
+            comments: self.comments.transmute_vec(),
         })
     }
 }
@@ -82,6 +85,7 @@ impl DatabaseDomainType for Post {
                 .map(|(r, c)| (r, c as u32))
                 .collect(),
             reaction: value.user_reaction,
+            comments: value.comments,
         })
     }
 
@@ -101,6 +105,7 @@ impl DatabaseDomainType for Post {
                 .map(|(r, c)| (r, c as i64))
                 .collect(),
             user_reaction: self.reaction,
+            comments: self.comments,
         })
     }
 }

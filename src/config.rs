@@ -1,3 +1,4 @@
+use crate::types::FastMap;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -95,6 +96,8 @@ pub struct ServiceConfig {
     pub notification_expiration_time: i64,
     pub max_message_size: usize,
     pub resource_chunk_size: usize,
+    pub max_upload_size: u32,
+    pub max_channel_size: u32,
 }
 
 impl Default for ServiceConfig {
@@ -123,6 +126,10 @@ impl Default for ServiceConfig {
             notification_expiration_time: 144,
             max_message_size: 1024 * 4,
             resource_chunk_size: 1024 * 2,
+            // Limit upload size to 4 MiB
+            max_upload_size: 1024 * 1024 * 4,
+            // Limit channel size to 16 MiB
+            max_channel_size: 1024 * 1024 * 16,
         }
     }
 }
@@ -151,6 +158,7 @@ pub struct NetworkConfig {
     #[serde(with = "crate::utils::serde_duration")]
     pub tcp_keepalive_interval: Duration,
     pub tcp_keepalive_retries: u32,
+    pub service_cooldowns: FastMap<String, String>,
 }
 
 impl Default for NetworkConfig {
@@ -182,6 +190,7 @@ impl Default for NetworkConfig {
             tcp_keepalive: Duration::from_secs(60),
             tcp_keepalive_interval: Duration::from_secs(10),
             tcp_keepalive_retries: 3,
+            service_cooldowns: FastMap::default(),
         }
     }
 }
