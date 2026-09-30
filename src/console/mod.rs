@@ -34,6 +34,7 @@ static COMMANDS: &[Command] = &[
     general::EXIT,
     general::STATUS,
     general::CLEAR_CONSOLE,
+    general::SERVICES,
     #[cfg(feature = "testing")]
     general::CLEAR_STATE,
     user::CREATE,

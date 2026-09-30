@@ -1,5 +1,7 @@
 use crate::console::{Command, CommandError};
 use crate::state::ServerState;
+use aura_rust::types::FileDescriptorSet;
+use aura_rust::{FILE_DESCRIPTOR_SET, Message};
 use no_pico_args::Arguments;
 use std::pin::Pin;
 
@@ -42,6 +44,36 @@ pub const CLEAR_CONSOLE: Command = Command {
      -> Pin<Box<dyn Future<Output = Result<(), CommandError>>>> {
         Box::pin(async move {
             print!("\x1B[2J\x1B[1;1H");
+            Ok(())
+        })
+    },
+};
+
+pub const SERVICES: Command = Command {
+    name: "services",
+    description: "List active services",
+    usage: "services",
+    execute: |_: Arguments,
+              _: ServerState|
+     -> Pin<Box<dyn Future<Output = Result<(), CommandError>>>> {
+        Box::pin(async move {
+            let services = FileDescriptorSet::decode(FILE_DESCRIPTOR_SET)
+                .expect("Failed to decode file descriptor set")
+                .file
+                .into_iter()
+                .flat_map(|desc| desc.service)
+                .map(|serv| aura_rust::general::v1::ServiceDescriptor {
+                    name: serv.name.unwrap_or_else(|| "<unknown>".to_string()),
+                    methods: serv
+                        .method
+                        .into_iter()
+                        .map(|meth| meth.name.unwrap_or_else(|| "<unknown>".to_string()))
+                        .collect(),
+                })
+                .collect::<Vec<_>>();
+
+            tracing::info!("Services: {services:#?}");
+
             Ok(())
         })
     },
