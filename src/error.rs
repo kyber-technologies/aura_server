@@ -59,6 +59,13 @@ impl Error {
         }
     }
 
+    pub fn rate_limit(message: impl ToSmolStr) -> Self {
+        Self {
+            code: ErrorCode::RateLimit,
+            message: message.to_smolstr(),
+        }
+    }
+
     pub fn code_name(&self) -> &'static str {
         match self.code {
             ErrorCode::Unspecified => "UNSPECIFIED",
@@ -69,6 +76,7 @@ impl Error {
             ErrorCode::InvalidFormat => "INVALID_FORMAT",
             ErrorCode::Restricted => "RESTRICTED",
             ErrorCode::Unwanted => "UNWANTED",
+            ErrorCode::RateLimit => "RATE_LIMIT",
         }
     }
 }
