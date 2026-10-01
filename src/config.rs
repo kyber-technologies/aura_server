@@ -10,7 +10,7 @@ pub fn init() {
         Config::default()
     } else {
         let path = std::env::var("CONFIG_FILE").unwrap_or_else(|_| {
-            let path = if cfg!(debug_assertions) {
+            let path = if cfg!(any(debug_assertions, feature = "testing")) {
                 "./dev/config.json"
             } else {
                 "./config.json"
@@ -104,19 +104,19 @@ pub struct ServiceConfig {
 impl Default for ServiceConfig {
     fn default() -> Self {
         Self {
-            public_key: if cfg!(debug_assertions) {
+            public_key: if cfg!(any(debug_assertions, feature = "testing")) {
                 "./dev/public-key.pem"
             } else {
                 "./secure/public-key.pem"
             }
             .to_string(),
-            private_key: if cfg!(debug_assertions) {
+            private_key: if cfg!(any(debug_assertions, feature = "testing")) {
                 "./dev/private-key.pem"
             } else {
                 "./secure/private-key.pem"
             }
             .to_string(),
-            resource_dir: if cfg!(debug_assertions) {
+            resource_dir: if cfg!(any(debug_assertions, feature = "testing")) {
                 "./dev/resources"
             } else {
                 "./resources"
@@ -169,13 +169,13 @@ impl Default for NetworkConfig {
             rate_limit_replenish: 100,
             rate_limit_burst: 30,
             tls_timeout: 5,
-            tls_certificate: if cfg!(debug_assertions) {
+            tls_certificate: if cfg!(any(debug_assertions, feature = "testing")) {
                 "./dev/tls-cert.pem"
             } else {
                 "./secure/tls-cert.pem"
             }
             .to_string(),
-            tls_key: if cfg!(debug_assertions) {
+            tls_key: if cfg!(any(debug_assertions, feature = "testing")) {
                 "./dev/tls-key.pem"
             } else {
                 "./secure/tls-key.pem"
@@ -191,7 +191,39 @@ impl Default for NetworkConfig {
             tcp_keepalive: Duration::from_secs(60),
             tcp_keepalive_interval: Duration::from_secs(10),
             tcp_keepalive_retries: 3,
-            method_cooldowns: FastMap::from_iter([]),
+            method_cooldowns: if cfg!(any(debug_assertions, feature = "testing")) {
+                FastMap::default()
+            } else {
+                FastMap::from_iter([
+                    ("user.auth".to_string(), "1s".to_string()),
+                    ("user.verify_email".to_string(), "60s".to_string()),
+                    ("user.create".to_string(), "60s".to_string()),
+                    ("user.delete".to_string(), "60s".to_string()),
+                    ("user.update".to_string(), "10s".to_string()),
+                    ("user.get".to_string(), "100ms".to_string()),
+                    ("user.search".to_string(), "1s".to_string()),
+                    ("user.block".to_string(), "1s".to_string()),
+                    ("user.is_blocked".to_string(), "200ms".to_string()),
+                    ("user.follow".to_string(), "200ms".to_string()),
+                    ("resource.upload".to_string(), "1s".to_string()),
+                    ("resource.download".to_string(), "200ms".to_string()),
+                    ("resource.meta".to_string(), "500ms".to_string()),
+                    ("chat.create_channel".to_string(), "10s".to_string()),
+                    ("chat.delete_channel".to_string(), "10s".to_string()),
+                    ("chat.set_usre_perm".to_string(), "500ms".to_string()),
+                    ("chat.invite".to_string(), "500ms".to_string()),
+                    ("chat.read".to_string(), "100ms".to_string()),
+                    ("chat.send".to_string(), "200ms".to_string()),
+                    ("chat.delete_message".to_string(), "300ms".to_string()),
+                    ("posting.feed".to_string(), "500ms".to_string()),
+                    ("posting.publish".to_string(), "5s".to_string()),
+                    ("posting.unpublish".to_string(), "1s".to_string()),
+                    ("posting.get".to_string(), "200ms".to_string()),
+                    ("posting.get_of".to_string(), "200ms".to_string()),
+                    ("posting.search_posts".to_string(), "300ms".to_string()),
+                    ("posting.react_to_post".to_string(), "100ms".to_string()),
+                ])
+            },
         }
     }
 }
@@ -213,7 +245,7 @@ impl Default for DatabaseConfig {
     fn default() -> Self {
         Self {
             user: "postgres".to_string(),
-            password: if cfg!(debug_assertions) {
+            password: if cfg!(any(debug_assertions, feature = "testing")) {
                 "./dev/database-password"
             } else {
                 "./secure/database-password"
@@ -247,14 +279,14 @@ impl Default for EmailConfig {
         Self {
             smtp: "127.0.0.1:1025".to_string(), // Default Mailhog SMTP Server
             smtp_user: "user".to_string(),
-            smtp_password: if cfg!(debug_assertions) {
+            smtp_password: if cfg!(any(debug_assertions, feature = "testing")) {
                 "./dev/smtp-password"
             } else {
                 "./secure/smtp-password"
             }
             .to_string(),
             verify_token_len: 6,
-            relay: !cfg!(debug_assertions),
+            relay: !cfg!(any(debug_assertions, feature = "testing")),
             exp: 3600,
             no_reply_mail: "no-reply@aura.social".to_string(),
             email_code_tmp: "assets/email_code_tmp.html".to_string(),
