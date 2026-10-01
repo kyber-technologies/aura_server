@@ -48,7 +48,7 @@ impl Service {
                     "status".to_string(),
                     "ok".to_string(),
                 )]),
-                testing: false,
+                testing: cfg!(feature = "testing"),
                 error: None,
             })
         }
