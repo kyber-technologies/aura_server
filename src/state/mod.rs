@@ -172,6 +172,5 @@ impl ServerState {
     pub fn print_status(&self) {
         self.database.print_status();
         self.emails.print_status();
-        tracing::info!("Config: {:#?}", config::get());
     }
 }
