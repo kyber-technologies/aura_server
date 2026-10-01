@@ -1,9 +1,12 @@
+use crate::error::{Error, ErrorType};
 use crate::state::ServerState;
-use crate::{config, utils};
+use crate::types::user::UserRole;
+use crate::{auth, config, utils};
 use aura_rust::general::v1::general_service_server::GeneralService;
 use aura_rust::general::v1::{
     ClearStateRequest, ClearStateResponse, ConfigRequest, ConfigResponse, EmailTokenRequest,
-    EmailTokenResponse, ServicesRequest, ServicesResponse, TestUsersRequest, TestUsersResponse,
+    EmailTokenResponse, ServicesRequest, ServicesResponse, StatusRequest, StatusResponse,
+    TestUsersRequest, TestUsersResponse,
 };
 use tonic::{Request, Response, Status};
 
@@ -15,6 +18,40 @@ pub struct Service {
 impl Service {
     pub fn new(state: ServerState) -> Self {
         Self { state }
+    }
+
+    async fn _status(&self, req: Request<StatusRequest>) -> Result<StatusResponse, Error> {
+        let mut database = self.state.database().await?;
+
+        let is_admin = match auth::verify(&mut database, &req).await {
+            Ok((user, _)) => Ok(user.role == UserRole::Admin),
+            Err(err) => {
+                if let ErrorType::Unauthorized(_) = err.ty {
+                    Ok(false)
+                } else {
+                    Err(err)
+                }
+            }
+        }?;
+
+        if is_admin {
+            let status = self.state.status().await?;
+
+            Ok(StatusResponse {
+                details: status.into_iter().collect(),
+                testing: cfg!(feature = "testing"),
+                error: None,
+            })
+        } else {
+            Ok(StatusResponse {
+                details: std::collections::HashMap::from_iter([(
+                    "status".to_string(),
+                    "ok".to_string(),
+                )]),
+                testing: false,
+                error: None,
+            })
+        }
     }
 }
 
@@ -30,6 +67,22 @@ impl GeneralService for Service {
             max_upload_size: config.service.max_upload_size,
             max_channel_size: config.service.max_channel_size,
         }))
+    }
+
+    async fn status(
+        &self,
+        request: Request<StatusRequest>,
+    ) -> Result<Response<StatusResponse>, Status> {
+        let resp = self
+            ._status(request)
+            .await
+            .unwrap_or_else(|err| StatusResponse {
+                details: Default::default(),
+                testing: false,
+                error: Some(err.into()),
+            });
+
+        Ok(Response::new(resp))
     }
 
     async fn clear_state(

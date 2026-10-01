@@ -58,11 +58,25 @@ impl Database {
             .expect("Failed to run pending migrations");
     }
 
+    pub fn status(&self) -> DatabaseStatus {
+        let status = self.pool.status();
+
+        DatabaseStatus {
+            max_size: status.max_size,
+            size: status.size,
+            available: status.available,
+            waiting: status.waiting,
+        }
+    }
+
     pub fn dispose(&self) {
         self.pool.close();
     }
+}
 
-    pub fn print_status(&self) {
-        tracing::info!("Database Status: {:#?}", self.pool.status())
-    }
+pub struct DatabaseStatus {
+    pub max_size: usize,
+    pub size: usize,
+    pub available: usize,
+    pub waiting: usize,
 }

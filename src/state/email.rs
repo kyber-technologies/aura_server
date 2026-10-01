@@ -141,8 +141,8 @@ impl EmailRegistry {
         self.registry.shrink_to_fit();
     }
 
-    pub fn print_status(&self) {
-        tracing::info!("Email Register Length: {}", self.registry.len());
+    pub fn registry_len(&self) -> usize {
+        self.registry.len()
     }
 
     fn build_email_code_template(&self, token: &str, exp: &str) -> Result<(String, String), Error> {

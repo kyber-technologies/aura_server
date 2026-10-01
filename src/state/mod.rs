@@ -3,10 +3,11 @@ use crate::error::Error;
 use crate::state::cooldowns::CooldownManager;
 use crate::state::database::{Database, DatabaseConnection};
 use crate::state::id_factory::IdFactory;
+use crate::state::status::ServerStatus;
 use email::EmailRegistry;
 use embedder::TextEmbedder;
 use std::sync::Arc;
-use tokio::sync::Notify;
+use tokio::sync::{Mutex, Notify};
 use tonic::Request;
 
 pub mod cooldowns;
@@ -14,6 +15,7 @@ pub mod database;
 pub mod email;
 pub mod embedder;
 pub mod id_factory;
+pub mod status;
 
 #[derive(Clone)]
 pub struct ServerState {
@@ -23,6 +25,7 @@ pub struct ServerState {
     embedder: TextEmbedder,
     id_factory: IdFactory,
     cooldown: CooldownManager,
+    status: Arc<Mutex<ServerStatus>>,
 }
 
 impl ServerState {
@@ -49,6 +52,7 @@ impl ServerState {
             embedder,
             id_factory: IdFactory::new(machine_id.parse().expect("Invalid machine ID")),
             cooldown: CooldownManager::new(),
+            status: Arc::new(Mutex::new(ServerStatus::new())),
         }
     }
 
@@ -58,10 +62,16 @@ impl ServerState {
         loop {
             tokio::select! {
                 _ = interval.tick() => {
+                    let mut status = self.status.lock().await;
+
+                    status.start_maintain();
+
                     tracing::info!("Maintaining server state...");
                     // TODO: Maintain governor
                     self.emails.maintain();
                     self.cooldown.maintain();
+
+                    status.end_maintain();
                 }
 
                 _ = self.exit.notified() => {
@@ -97,6 +107,49 @@ impl ServerState {
 
     pub fn throttle<T>(&self, req: &Request<T>, method: &'static str) -> Result<(), Error> {
         self.cooldown.throttle(req, method)
+    }
+
+    pub async fn status(&self) -> Result<Vec<(String, String)>, Error> {
+        let status = self.status.lock().await;
+
+        let email_registry_len = self.emails().registry_len();
+        let database = self.database.status();
+
+        let tokio = tokio::runtime::Handle::current().metrics();
+
+        Ok(vec![
+            ("uptime".to_string(), format!("{:.2?}", status.uptime())),
+            (
+                "last_maintain_duration".to_string(),
+                format!("{:?}", status.last_maintain_duration()),
+            ),
+            (
+                "email_registry_len".to_string(),
+                email_registry_len.to_string(),
+            ),
+            (
+                "database_max_size".to_string(),
+                database.max_size.to_string(),
+            ),
+            ("database_size".to_string(), database.size.to_string()),
+            (
+                "database_available".to_string(),
+                database.available.to_string(),
+            ),
+            ("database_waiting".to_string(), database.waiting.to_string()),
+            (
+                "idle_tokio_threads".to_string(),
+                tokio.num_idle_blocking_threads().to_string(),
+            ),
+            (
+                "alive_tokio_tasks".to_string(),
+                tokio.num_alive_tasks().to_string(),
+            ),
+            (
+                "tokio_task_queue".to_string(),
+                tokio.global_queue_depth().to_string(),
+            ),
+        ])
     }
 
     pub fn dispose(self) {
@@ -167,10 +220,5 @@ impl ServerState {
         }
 
         Ok(())
-    }
-
-    pub fn print_status(&self) {
-        self.database.print_status();
-        self.emails.print_status();
     }
 }

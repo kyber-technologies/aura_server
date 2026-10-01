@@ -28,7 +28,16 @@ pub const STATUS: Command = Command {
               state: ServerState|
      -> Pin<Box<dyn Future<Output = Result<(), CommandError>>>> {
         Box::pin(async move {
-            state.print_status();
+            let status = state
+                .status()
+                .await?
+                .into_iter()
+                .map(|(k, v)| format!("  {k}: {v}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            tracing::info!("Server Status:\n{status}");
+            tracing::info!("Testing Mode: {}", cfg!(feature = "testing"));
 
             Ok(())
         })
