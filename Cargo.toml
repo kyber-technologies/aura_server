@@ -33,6 +33,7 @@ rapidhash = { version = "4.5.1", features = ["unsafe", "nightly"] }
 fastrand = "2.5.0"
 chrono = { version = "0.4.45", default-features = false, features = ["std", "now", "serde"] }
 smol_str = "0.3.6"
+mimalloc = "0.1.52"
 
 lettre = { version = "0.11.23", default-features = false, features = ["builder", "smtp-transport", "pool", "rustls-native-certs", "tokio1-rustls", "tokio1", "aws-lc-rs"] }
 tera = { version = "2.4.0", features = ["fast"] }

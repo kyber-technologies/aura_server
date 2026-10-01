@@ -33,6 +33,9 @@ mod utils;
 #[cfg(feature = "testing")]
 mod testing;
 
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 fn main() {
     println!("Loading configuration...");
     config::init();
