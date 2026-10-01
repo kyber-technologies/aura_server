@@ -6,7 +6,6 @@ use aura_rust::general::v1::general_service_server::GeneralServiceServer;
 use aura_rust::posting::v1::posting_service_server::PostingServiceServer;
 use aura_rust::resource::v1::resource_service_server::ResourceServiceServer;
 use aura_rust::user::v1::user_service_server::UserServiceServer;
-use logic::user;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;

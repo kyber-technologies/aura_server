@@ -1,5 +1,5 @@
 use crate::auth;
-use crate::error::Error;
+use crate::error::{Error, ErrorType};
 use crate::logic::{feed, user};
 use crate::state::ServerState;
 use crate::types::GrpcDomainType;
@@ -7,7 +7,6 @@ use crate::types::common::Timestamp;
 use crate::types::resource::ResourceId;
 use crate::types::user::{Notifications, User, UserRole, UserSettings};
 use crate::utils::ConvertHashMap;
-use aura_rust::common::v1::ErrorCode;
 use aura_rust::user::v1::user_service_server::UserService;
 use aura_rust::user::v1::{
     AuthRequest, AuthResponse, BlockRequest, BlockResponse, CreateRequest, CreateResponse,
@@ -55,7 +54,7 @@ impl Service {
                 error: None,
             }),
             Err(e) => {
-                if ErrorCode::Unauthorized == e.code
+                if let ErrorType::Unauthorized(_) = e.ty
                     && let Some(user_id) = args.user_id
                     && let Some(password) = args.password
                 {

@@ -134,19 +134,19 @@ impl ServerState {
 
         tracing::info!("Creating test user with role user...");
 
-        crate::user::create(&mut database, crate::testing::test_user(true))
+        crate::logic::user::create(&mut database, crate::testing::test_user(true))
             .await
             .expect("Failed to create new test user");
 
         tracing::info!("Creating test user with role moderator...");
 
-        crate::user::create(&mut database, crate::testing::moderator_user(true))
+        crate::logic::user::create(&mut database, crate::testing::moderator_user(true))
             .await
             .expect("Failed to create moderator test user");
 
         tracing::info!("Creating test user with role admin...");
 
-        crate::user::create(&mut database, crate::testing::admin_user(true))
+        crate::logic::user::create(&mut database, crate::testing::admin_user(true))
             .await
             .expect("Failed to create admin test user");
 

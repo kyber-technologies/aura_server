@@ -60,10 +60,13 @@ impl CooldownManager {
                 let last_time = entry.get();
                 if *last_time + cooldown > now {
                     let remaining = (*last_time + cooldown) - now;
-                    return Err(Error::rate_limit(format!(
-                        "This function is on cooldown. Try again in {}s.",
-                        remaining.as_secs().max(1)
-                    )));
+                    return Err(Error::rate_limit(
+                        format!(
+                            "This function is on cooldown. Try again in {}s.",
+                            remaining.as_secs().max(1)
+                        ),
+                        remaining,
+                    ));
                 }
                 entry.insert(now);
             }
