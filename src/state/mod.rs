@@ -160,7 +160,23 @@ impl ServerState {
     pub async fn clear_state(&self) -> Result<(), Error> {
         use diesel_async::RunQueryDsl;
 
-        tracing::info!("Detected test environment. Clearing database...");
+        tracing::info!("Detected test environment. Clearing internal state...");
+
+        tracing::info!("Cleaning resource directory...");
+        let mut res_entries = tokio::fs::read_dir(&config::get().service.resource_dir)
+            .await
+            .map_err(|e| Error::internal(format!("Failed to read resource directory: {}", e)))?;
+
+        while let Some(entry) = res_entries.next_entry().await.map_err(|err| {
+            Error::internal(format!("Failed to read resource directory entry: {err}"))
+        })? {
+            // Don't delete the built-in "aura" directory
+            if entry.file_name() != "aura" {
+                tokio::fs::remove_dir_all(entry.path()).await.map_err(|e| {
+                    Error::internal(format!("Failed to remove resource directory: {}", e))
+                })?;
+            }
+        }
 
         let mut database = self.database().await?;
 
@@ -202,22 +218,6 @@ impl ServerState {
         crate::logic::user::create(&mut database, crate::testing::admin_user(true))
             .await
             .expect("Failed to create admin test user");
-
-        tracing::info!("Cleaning resource directory...");
-        let mut res_entries = tokio::fs::read_dir(&config::get().service.resource_dir)
-            .await
-            .map_err(|e| Error::internal(format!("Failed to read resource directory: {}", e)))?;
-
-        while let Some(entry) = res_entries.next_entry().await.map_err(|err| {
-            Error::internal(format!("Failed to read resource directory entry: {err}"))
-        })? {
-            // Don't delete the built-in "aura" directory
-            if entry.file_name() != "aura" {
-                tokio::fs::remove_dir_all(entry.path()).await.map_err(|e| {
-                    Error::internal(format!("Failed to remove resource directory: {}", e))
-                })?;
-            }
-        }
 
         Ok(())
     }
