@@ -421,10 +421,10 @@ impl Default for UserSettings {
     fn default() -> Self {
         Self {
             allow_invites: true,
-            algo_like_weight: 0.55,
-            algo_dislike_weight: 0.5,
-            algo_comment_weight: 0.8,
-            algo_time_decay: 0.4,
+            algo_like_weight: 0.0,
+            algo_dislike_weight: 0.0,
+            algo_comment_weight: 0.0,
+            algo_time_decay: 0.0,
             notify_invite: true,
             notify_message: true,
             notify_comment: true,
