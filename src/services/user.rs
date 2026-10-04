@@ -90,6 +90,17 @@ impl Service {
 
         let args = request.into_inner();
 
+        if args.email.is_empty()
+            || args.password.is_empty()
+            || args.user_id.is_empty()
+            || args.username.is_empty()
+            || args.verification_token.is_empty()
+        {
+            return Err(Error::invalid_format(
+                "Please specify: email, password, user_id, username and verification_token.",
+            ));
+        }
+
         self.state
             .emails()
             .verify_email(&args.email, args.verification_token)?;
