@@ -13,6 +13,7 @@ pub struct User {
     pub user_id: String,
     pub username: String,
     pub email: String,
+    pub about: String,
     pub password: String,
     pub role: UserRole,
     pub created_at: Timestamp,
@@ -29,6 +30,7 @@ impl User {
         UserProfile {
             user_id: self.user_id,
             username: self.username,
+            about: self.about,
             role: self.role,
             icon: self.icon,
             created_at: self.created_at,
@@ -48,6 +50,7 @@ impl GrpcDomainType for User {
             user_id: value.user_id,
             username: value.username,
             email: value.email,
+            about: value.about,
             password: value.password,
             role: UserRole::from_grpc(role)?,
             created_at: Timestamp::from_grpc(
@@ -81,6 +84,7 @@ impl GrpcDomainType for User {
             user_id: self.user_id,
             username: self.username,
             email: self.email,
+            about: self.about,
             password: if cfg!(feature = "testing") {
                 // Keep password in testing mode
                 self.password
@@ -112,6 +116,7 @@ impl DatabaseDomainType for User {
             user_id: value.user.user_id,
             username: value.user.username,
             email: value.user.email,
+            about: value.user.about,
             password: value.user.password,
             role: value.user.role,
             created_at: Timestamp(value.user.created_at),
@@ -134,6 +139,7 @@ impl DatabaseDomainType for User {
                 user_id: self.user_id,
                 username: self.username,
                 email: self.email,
+                about: self.about,
                 password: self.password,
                 role: self.role,
                 icon: self.icon.into_db()?,
@@ -157,6 +163,7 @@ impl DatabaseDomainType for User {
 pub struct UserProfile {
     pub user_id: String,
     pub username: String,
+    pub about: String,
     pub role: UserRole,
     pub icon: ResourceId,
     pub created_at: Timestamp,
@@ -173,6 +180,7 @@ impl GrpcDomainType for UserProfile {
         Ok(Self {
             user_id: value.user_id,
             username: value.username,
+            about: value.about,
             role: UserRole::from_grpc(role)?,
             icon: ResourceId::from_grpc(
                 value
@@ -193,6 +201,7 @@ impl GrpcDomainType for UserProfile {
         Ok(grpc::UserProfile {
             user_id: self.user_id,
             username: self.username,
+            about: self.about,
             role: self.role.into_grpc()? as i32,
             icon: Some(self.icon.into_grpc()?),
             created_at: Some(self.created_at.into_grpc()?),

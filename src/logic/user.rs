@@ -95,6 +95,7 @@ pub async fn update(database: &mut DatabaseConnection, user: User) -> Result<(),
         .set((
             users::username.eq(&user.username),
             users::email.eq(&user.email),
+            users::about.eq(&user.about),
             users::password.eq(&user.password),
             users::role.eq(&user.role),
             users::icon.eq(icon),
@@ -232,12 +233,14 @@ pub async fn search(
         .select((
             users::user_id,
             users::username,
+            users::about,
             users::role,
             users::icon,
             users::created_at,
         ))
         .limit(limit)
         .load::<(
+            String,
             String,
             String,
             UserRole,
@@ -248,7 +251,7 @@ pub async fn search(
 
     let mut profiles = Vec::with_capacity(results.len());
 
-    for (user_id, username, role, icon, created_at) in results {
+    for (user_id, username, about, role, icon, created_at) in results {
         let followers_count = user_follows::table
             .filter(user_follows::followed_id.eq(&user_id))
             .count()
@@ -264,6 +267,7 @@ pub async fn search(
         profiles.push(UserProfile {
             user_id,
             username,
+            about,
             role,
             icon: ResourceId::from_db(icon)?,
             created_at: Timestamp(created_at),

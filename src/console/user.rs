@@ -33,6 +33,7 @@ pub const CREATE: Command = Command {
                 user_id: user_id.clone(),
                 username,
                 email,
+                about: String::new(),
                 password: auth::hash(password)?,
                 role,
                 created_at: Timestamp::now(),

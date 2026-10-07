@@ -12,6 +12,7 @@ CREATE TABLE users
     user_id       TEXT        PRIMARY KEY,
     username      TEXT        NOT NULL,
     email         TEXT        NOT NULL,
+    about         TEXT        NOT NULL,
     password      TEXT        NOT NULL,
     role          user_role   NOT NULL,
     icon          JSONB       NOT NULL,

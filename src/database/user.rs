@@ -12,6 +12,7 @@ pub struct User {
     pub user_id: String,
     pub username: String,
     pub email: String,
+    pub about: String,
     pub password: String,
     pub role: UserRole,
     pub icon: Value,

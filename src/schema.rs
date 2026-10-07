@@ -124,6 +124,7 @@ diesel::table! {
         user_id -> Text,
         username -> Text,
         email -> Text,
+        about -> Text,
         password -> Text,
         role -> UserRole,
         icon -> Jsonb,

@@ -7,6 +7,7 @@ pub fn test_user(hash: bool) -> User {
         user_id: "user".to_string(),
         username: "User".to_string(),
         email: "user@aura.testing".to_string(),
+        about: String::new(),
         password: if hash {
             crate::auth::hash("user123".to_string()).expect("Failed to hash moderator password")
         } else {
@@ -31,6 +32,7 @@ pub fn moderator_user(hash: bool) -> User {
         user_id: "moderator".to_string(),
         username: "Moderator".to_string(),
         email: "moderator@aura.testing".to_string(),
+        about: String::new(),
         password: if hash {
             crate::auth::hash("mod123".to_string()).expect("Failed to hash moderator password")
         } else {
@@ -55,6 +57,7 @@ pub fn admin_user(hash: bool) -> User {
         user_id: "admin".to_string(),
         username: "Admin".to_string(),
         email: "admin@aura.testing".to_string(),
+        about: String::new(),
         password: if hash {
             crate::auth::hash("admin123".to_string()).expect("Failed to hash moderator password")
         } else {

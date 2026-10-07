@@ -125,6 +125,7 @@ impl Service {
             user_id: args.user_id.clone(),
             username: args.username,
             email: args.email.clone(),
+            about: String::new(),
             password: args.password,
             role: UserRole::User,
             created_at: Timestamp::now(),
@@ -189,6 +190,7 @@ impl Service {
 
         user.username = args.username.unwrap_or(user.username);
         user.email = args.email.unwrap_or(user.email);
+        user.about = args.about.unwrap_or(user.about);
         user.password = args
             .password
             .map(auth::hash)
