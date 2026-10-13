@@ -70,18 +70,13 @@ impl Service {
             return Err(Error::restricted("User does not have write permissions"));
         }
 
-        let desc = if let Some(desc) =
-            resource::get(&mut database, slice::from_ref(&desc.resource_id))
-                .await?
-                .into_iter()
-                .next()
-        {
-            desc
-        } else {
-            resource::create(&mut database, desc).await?
-        };
+        let raw_temp_file = tempfile::Builder::new()
+            .prefix("raw_upload")
+            .tempfile()
+            .map_err(|err| Error::internal(format!("Failed to create temp file: {err}")))?;
+        let raw_temp_path = raw_temp_file.path().to_path_buf();
 
-        let stream = stream.into_inner().map(|req| match req {
+        let stream_data = stream.into_inner().map(|req| match req {
             Ok(req) => match req
                 .payload
                 .ok_or(Error::invalid_format("Payload not provided"))?
@@ -91,13 +86,38 @@ impl Service {
                 )),
                 Payload::Data(data) => Ok(data),
             },
-
             Err(err) => Err(Error::internal(format!(
                 "Got invalid upload request: {err}"
             ))),
         });
 
-        resource::write(desc.resource_id, stream).await?;
+        resource::write_stream_to_path(&raw_temp_path, stream_data).await?;
+
+        let format_ext = desc.meta.format.to_lowercase();
+        let resource_format = resource::ResourceFormat::from_supported(&format_ext)
+            .ok_or_else(|| Error::invalid_format("Unsupported format"))?;
+
+        let final_path = resource::build_path(&resource_id);
+        if let Some(parent) = final_path.parent() {
+            tokio::fs::create_dir_all(parent).await.map_err(|e| {
+                Error::internal(format!("Failed to create destination directory: {e}"))
+            })?;
+        }
+
+        resource_format
+            .encode(&raw_temp_path, &final_path, &format_ext)
+            .await?;
+
+        let finalized_metadata = tokio::fs::metadata(&final_path).await.map_err(|e| {
+            Error::internal(format!("Failed to read finalized resource metadata: {e}"))
+        })?;
+
+        let mut final_desc = desc;
+        final_desc.meta.size = finalized_metadata.len() as u32;
+
+        if !resource::exists(&mut database, &final_desc.resource_id).await? {
+            resource::create(&mut database, final_desc).await?;
+        }
 
         Ok(UploadResponse {
             result: Some(upload_response::Result::ResourceId(

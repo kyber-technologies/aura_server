@@ -1,4 +1,5 @@
 use crate::error::{Error, ErrorType};
+use crate::logic::resource::ResourceFormat;
 use crate::state::ServerState;
 use crate::types::user::UserRole;
 use crate::{auth, config, utils};
@@ -66,6 +67,7 @@ impl GeneralService for Service {
             item_request_limit: config.service.item_request_limit,
             max_upload_size: config.service.max_upload_size,
             max_channel_size: config.service.max_channel_size,
+            supported_resource_formats: ResourceFormat::all_supported(),
         }))
     }
 

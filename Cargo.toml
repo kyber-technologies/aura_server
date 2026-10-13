@@ -6,7 +6,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tokio = { version = "1.53.1", features = ["rt-multi-thread", "fs", "time", "parking_lot"] }
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "fs", "time", "parking_lot", "process"] }
 tokio-util = { version = "0.7.19", features = ["io"] }
 tokio-stream = { version = "0.1.19", default-features = false }
 
@@ -44,6 +44,9 @@ shlex = "2.0.1"
 
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
+image = { version = "0.25.10", default-features = false, features = ["rayon", "jpeg", "png", "webp", "gif"] }
+webp = "0.3.1"
+tempfile = "3.27.0"
 
 aura_rust = { git = "https://github.com/kyber-technologies/aura_proto.git" }
 

@@ -188,8 +188,17 @@ impl Service {
             .await?;
         }
 
+        if let Some(email) = args.email {
+            let token = args
+                .token
+                .ok_or(Error::invalid_format("Token not provided"))?;
+
+            self.state.emails().verify_email(&email, token)?;
+
+            user.email = email;
+        }
+
         user.username = args.username.unwrap_or(user.username);
-        user.email = args.email.unwrap_or(user.email);
         user.about = args.about.unwrap_or(user.about);
         user.password = args
             .password

@@ -11,9 +11,12 @@ use diesel::pg::Pg;
 use diesel::{BoolExpressionMethods, BoxableExpression, ExpressionMethods, SelectableHelper};
 use diesel::{OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
+use image::imageops::FilterType;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use tokio::io::{AsyncWriteExt, BufWriter};
+use tokio::process::Command;
 use tokio_util::io::ReaderStream;
 use tonic::codegen::tokio_stream::{Stream, StreamExt};
 
@@ -253,7 +256,44 @@ pub async fn write(
     Ok(())
 }
 
-fn build_path(id: &ResourceId) -> PathBuf {
+pub async fn write_stream_to_path(
+    path: &Path,
+    mut stream: impl Stream<Item = Result<Vec<u8>, Error>> + Unpin,
+) -> Result<(), Error> {
+    let file = fs::File::create(path)
+        .await
+        .map_err(|e| Error::internal(format!("Failed opening write file: {e}")))?;
+
+    let max_upload_bytes = config::get().service.max_upload_size as u64;
+    let mut total_written: u64 = 0;
+    let mut buf = BufWriter::with_capacity(config::get().service.resource_chunk_size, file);
+
+    while let Some(data_res) = stream.next().await {
+        let data = data_res?;
+        let chunk_len = data.len() as u64;
+
+        if total_written + chunk_len > max_upload_bytes {
+            drop(buf);
+            let _ = fs::remove_file(path).await;
+            return Err(Error::invalid_format(
+                "Uploaded stream exceeded maximum allowed file size",
+            ));
+        }
+
+        buf.write_all(&data)
+            .await
+            .map_err(|e| Error::internal(format!("Failed writing file: {e}")))?;
+        total_written += chunk_len;
+    }
+
+    buf.flush()
+        .await
+        .map_err(|e| Error::internal(format!("Failed flushing file: {e}")))?;
+
+    Ok(())
+}
+
+pub fn build_path(id: &ResourceId) -> PathBuf {
     Path::new(&config::get().service.resource_dir)
         .join(match &id.namespace {
             ResourceNamespace::Aura => "aura".to_string(),
@@ -262,4 +302,160 @@ fn build_path(id: &ResourceId) -> PathBuf {
             ResourceNamespace::Post(id) => format!("post.{id}"),
         })
         .join(&id.key)
+}
+
+pub enum ResourceFormat {
+    Image,
+    Video,
+    Audio,
+    Other,
+}
+
+impl ResourceFormat {
+    const ALL: [ResourceFormat; 4] = [
+        ResourceFormat::Image,
+        ResourceFormat::Video,
+        ResourceFormat::Audio,
+        ResourceFormat::Other,
+    ];
+
+    pub fn from_supported(s: &str) -> Option<Self> {
+        match s {
+            "png" | "jpg" | "jpeg" | "webp" | "gif" => Some(ResourceFormat::Image),
+            "mp4" | "mov" | "mkv" | "webm" => Some(ResourceFormat::Video),
+            "flac" | "ogg" | "wav" | "mp3" | "m4a" => Some(ResourceFormat::Audio),
+            "pdf" => Some(ResourceFormat::Other),
+            _ => None,
+        }
+    }
+
+    pub fn supported(&self) -> Vec<&str> {
+        match self {
+            ResourceFormat::Image => vec!["png", "jpg", "jpeg", "webp", "gif"],
+            ResourceFormat::Video => vec!["mp4", "mov", "mkv", "webm"],
+            ResourceFormat::Audio => vec!["flac", "ogg", "wav", "mp3", "m4a"],
+            ResourceFormat::Other => vec!["pdf"],
+        }
+    }
+
+    pub fn all_supported() -> Vec<String> {
+        ResourceFormat::ALL
+            .iter()
+            .flat_map(|f| f.supported())
+            .map(str::to_string)
+            .collect()
+    }
+
+    pub async fn encode(
+        &self,
+        input_path: &Path,
+        output_path: &Path,
+        format: &str,
+    ) -> Result<(), Error> {
+        match format {
+            "png" | "jpg" | "jpeg" | "webp" | "gif" => {
+                let config = &config::get().service;
+                let webp_config = config::get_webp();
+                let input_p = input_path.to_path_buf();
+                let output_p = output_path.to_path_buf();
+
+                tokio::task::spawn_blocking(move || {
+                    let img = image::open(&input_p).map_err(|err| {
+                        Error::internal(format!("Failed to open image from path: {err}"))
+                    })?;
+
+                    let resized = if img.width() > config.max_image_width
+                        || img.height() > config.max_image_height
+                    {
+                        img.resize(
+                            config.max_image_width,
+                            config.max_image_height,
+                            FilterType::Lanczos3,
+                        )
+                    } else {
+                        img
+                    };
+
+                    let webp = webp::Encoder::from_image(&resized)
+                        .map_err(|err| {
+                            Error::internal(format!("Failed to encode image into WebP: {err}"))
+                        })?
+                        .encode_advanced(webp_config)
+                        .map_err(|err| {
+                            Error::internal(format!("Failed to encode image into WebP: {err:?}"))
+                        })?;
+
+                    std::fs::write(&output_p, webp.deref()).map_err(|err| {
+                        Error::internal(format!("Failed to write encoded image to disk: {err}"))
+                    })?;
+
+                    Ok::<(), Error>(())
+                })
+                .await
+                .map_err(|err| Error::internal(format!("Tokio join error: {err:?}")))??;
+
+                Ok(())
+            }
+
+            "mp4" | "mov" | "mkv" | "webm" => {
+                let args = vec![
+                    "-y",
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "medium",
+                    "-crf",
+                    "23",
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "128k",
+                    "-movflags",
+                    "+faststart",
+                ];
+                run_ffmpeg_file(input_path, output_path, &args).await
+            }
+
+            "flac" | "ogg" | "wav" | "mp3" | "m4a" => {
+                let args = vec!["-y", "-c:a", "libopus", "-b:a", "96k"];
+                run_ffmpeg_file(input_path, output_path, &args).await
+            }
+
+            "pdf" => {
+                tokio::fs::copy(input_path, output_path)
+                    .await
+                    .map_err(|err| Error::internal(format!("Failed to copy file: {err}")))?;
+                Ok(())
+            }
+
+            _ => Err(Error::invalid_format("Unsupported format")),
+        }
+    }
+}
+
+async fn run_ffmpeg_file(
+    input_path: &Path,
+    output_path: &Path,
+    ffmpeg_args: &[&str],
+) -> Result<(), Error> {
+    let mut cmd = Command::new("ffmpeg");
+    cmd.arg("-i").arg(input_path);
+    for arg in ffmpeg_args {
+        cmd.arg(arg);
+    }
+    cmd.arg(output_path);
+
+    let status = cmd
+        .status()
+        .await
+        .map_err(|err| Error::internal(format!("FFmpeg execution failed to start: {err:?}")))?;
+
+    if !status.success() {
+        return Err(Error::internal(format!(
+            "FFmpeg transcoding failed with exit code: {:?}",
+            status.code()
+        )));
+    }
+
+    Ok(())
 }

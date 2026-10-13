@@ -11,7 +11,7 @@ impl Timestamp {
         let now = Utc::now();
         Self(
             now.with_nanosecond(now.timestamp_subsec_nanos() / 1_000 * 1_000)
-                .expect("valid nanosecond value"),
+                .expect("invalid nanosecond value"),
         )
     }
 }

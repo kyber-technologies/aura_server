@@ -2,8 +2,10 @@ use crate::types::FastMap;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 use std::time::Duration;
+use webp::WebPConfig;
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
+static WEBP_CONFIG: OnceLock<WebPConfig> = OnceLock::new();
 
 pub fn init() {
     let config = if cfg!(test) {
@@ -43,10 +45,48 @@ pub fn init() {
     }
 
     CONFIG.set(config).expect("Failed to set config");
+
+    WEBP_CONFIG
+        .set(WebPConfig {
+            lossless: 0,
+            quality: 80.0,
+            method: 4,
+            target_size: 0,
+            target_PSNR: 0.0,
+            segments: 4,
+            sns_strength: 50,
+            filter_strength: 60,
+            filter_sharpness: 0,
+            filter_type: 0,
+            autofilter: 0,
+            alpha_compression: 1,
+            alpha_filtering: 1,
+            alpha_quality: 80,
+            pass: 3,
+            show_compressed: 0,
+            preprocessing: 0,
+            partitions: 0,
+            partition_limit: 0,
+            emulate_jpeg_size: 0,
+            thread_level: 1,
+            low_memory: 0,
+            near_lossless: 100,
+            exact: 0,
+            use_delta_palette: 0,
+            use_sharp_yuv: 0,
+            qmin: 0,
+            qmax: 100,
+            ..WebPConfig::new().expect("Failed to build WebP Config")
+        })
+        .expect("Failed to set WebP Config");
 }
 
 pub fn get<'a>() -> &'a Config {
     CONFIG.get().expect("Failed to get config")
+}
+
+pub fn get_webp<'a>() -> &'a WebPConfig {
+    WEBP_CONFIG.get().expect("Failed to get config")
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -99,6 +139,8 @@ pub struct ServiceConfig {
     pub resource_chunk_size: usize,
     pub max_upload_size: u32,
     pub max_channel_size: u32,
+    pub max_image_width: u32,
+    pub max_image_height: u32,
 }
 
 impl Default for ServiceConfig {
@@ -131,6 +173,8 @@ impl Default for ServiceConfig {
             max_upload_size: 1024 * 1024 * 4,
             // Limit channel size to 16 MiB
             max_channel_size: 1024 * 1024 * 16,
+            max_image_width: 1080,
+            max_image_height: 1080,
         }
     }
 }

@@ -219,6 +219,7 @@ pub struct ResourceMeta {
     pub size: u32,
     pub timestamp: Timestamp,
     pub name: String,
+    pub format: String,
     pub metadata: FastMap<String, String>,
 }
 
@@ -236,6 +237,7 @@ impl GrpcDomainType for ResourceMeta {
                     .ok_or(Error::invalid_format("Timestamp not provided"))?,
             )?,
             name: value.name,
+            format: value.format,
             metadata: value.metadata.convert(),
         })
     }
@@ -245,6 +247,7 @@ impl GrpcDomainType for ResourceMeta {
             size: self.size as i32,
             timestamp: Some(self.timestamp.into_grpc()?),
             name: self.name,
+            format: self.format,
             metadata: self.metadata.convert(),
         })
     }
