@@ -115,6 +115,8 @@ impl Service {
         let mut final_desc = desc;
         final_desc.meta.size = finalized_metadata.len() as u32;
 
+        final_desc.meta.format = resource_format.to_format().unwrap_or(format_ext);
+
         if !resource::exists(&mut database, &final_desc.resource_id).await? {
             resource::create(&mut database, final_desc).await?;
         }

@@ -346,6 +346,15 @@ impl ResourceFormat {
             .collect()
     }
 
+    pub fn to_format(&self) -> Option<String> {
+        match self {
+            ResourceFormat::Image => Some("webp".to_string()),
+            ResourceFormat::Video => Some("mp4".to_string()),
+            ResourceFormat::Audio => Some("ogg".to_string()),
+            ResourceFormat::Other => None,
+        }
+    }
+
     pub async fn encode(
         &self,
         input_path: &Path,
