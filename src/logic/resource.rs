@@ -368,10 +368,25 @@ impl ResourceFormat {
                 let input_p = input_path.to_path_buf();
                 let output_p = output_path.to_path_buf();
 
+                // Parse the format explicitly
+                let img_format = match format {
+                    "png" => image::ImageFormat::Png,
+                    "jpg" | "jpeg" => image::ImageFormat::Jpeg,
+                    "webp" => image::ImageFormat::WebP,
+                    "gif" => image::ImageFormat::Gif,
+                    _ => return Err(Error::invalid_format("Unsupported image format")),
+                };
+
                 tokio::task::spawn_blocking(move || {
-                    let img = image::open(&input_p).map_err(|err| {
-                        Error::internal(format!("Failed to open image from path: {err}"))
+                    let file = std::fs::File::open(&input_p).map_err(|err| {
+                        Error::internal(format!("Failed to open temp file path: {err}"))
                     })?;
+
+                    let reader = std::io::BufReader::new(file);
+
+                    let img = image::ImageReader::with_format(reader, img_format)
+                        .decode()
+                        .map_err(|err| Error::internal(format!("Failed to decode image: {err}")))?;
 
                     let resized = if img.width() > config.max_image_width
                         || img.height() > config.max_image_height
