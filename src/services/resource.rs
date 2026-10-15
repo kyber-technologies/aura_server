@@ -41,15 +41,6 @@ impl Service {
             .await
             .ok_or(Error::invalid_format("First request must be meta request"))??;
 
-        let resource_id = ResourceId {
-            namespace: ResourceNamespace::from_grpc(
-                meta_req
-                    .namespace
-                    .ok_or(Error::invalid_format("Namespace not provided"))?,
-            )?,
-            key: self.state.id_factory().next_id()?.to_string(),
-        };
-
         let mut meta = ResourceMeta::from_grpc(match meta_req
             .payload
             .ok_or(Error::invalid_format("Payload not provided"))?
@@ -57,6 +48,20 @@ impl Service {
             Payload::Meta(meta) => Ok(meta),
             Payload::Data(_) => Err(Error::invalid_format("First payload must be meta")),
         }?)?;
+
+        let namespace = ResourceNamespace::from_grpc(
+            meta_req
+                .namespace
+                .ok_or(Error::invalid_format("Namespace not provided"))?,
+        )?;
+
+        let key = if namespace == ResourceNamespace::UserIcon {
+            meta.name.clone()
+        } else {
+            format!("{}.{}", self.state.id_factory().next_id()?, meta.format)
+        };
+
+        let resource_id = ResourceId { namespace, key };
 
         meta.timestamp = Timestamp::now();
 
