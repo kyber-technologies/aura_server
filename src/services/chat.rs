@@ -60,6 +60,7 @@ impl Service {
 
         let channel = chat::create_channel(
             &mut database,
+            &self.state.notifications(),
             self.state.id_factory(),
             Channel {
                 channel_id,
@@ -140,6 +141,7 @@ impl Service {
         if args.uninvite {
             chat::uninvite(
                 &mut database,
+                &self.state.notifications(),
                 self.state.id_factory(),
                 args.channel_id as UniqueId,
                 &user.user_id,
@@ -149,6 +151,7 @@ impl Service {
         } else {
             chat::invite(
                 &mut database,
+                &self.state.notifications(),
                 self.state.id_factory(),
                 args.channel_id as UniqueId,
                 &user.user_id,
@@ -221,6 +224,7 @@ impl Service {
             let id = ids.next_id()?;
             let msg = chat::send(
                 &mut database,
+                &self.state.notifications(),
                 ids,
                 Message {
                     message_id: id,

@@ -241,6 +241,7 @@ pub enum Notification {
     Invite {
         notification_id: UniqueId,
         timestamp: Timestamp,
+        ignore: bool,
         channel_id: UniqueId,
         invited_by: String,
         uninvited: bool,
@@ -248,6 +249,7 @@ pub enum Notification {
     Message {
         notification_id: UniqueId,
         timestamp: Timestamp,
+        ignore: bool,
         channel_id: UniqueId,
         sender_id: String,
         message: Message,
@@ -255,6 +257,7 @@ pub enum Notification {
     Comment {
         notification_id: UniqueId,
         timestamp: Timestamp,
+        ignore: bool,
         post_id: UniqueId,
         commend_id: UniqueId,
         sender_id: String,
@@ -277,6 +280,14 @@ impl Notification {
             Notification::Comment { .. } => settings.notify_comment,
         }
     }
+
+    pub fn set_ignore(&mut self, value: bool) {
+        match self {
+            Notification::Invite { ignore, .. } => *ignore = value,
+            Notification::Message { ignore, .. } => *ignore = value,
+            Notification::Comment { ignore, .. } => *ignore = value,
+        }
+    }
 }
 
 impl GrpcDomainType for Notification {
@@ -294,6 +305,7 @@ impl GrpcDomainType for Notification {
                         .timestamp
                         .ok_or(Error::invalid_format("Timestamp not provided"))?,
                 )?,
+                ignore: value.ignore,
                 channel_id: not.channel_id as UniqueId,
                 invited_by: not.invited_by,
                 uninvited: not.uninvited,
@@ -305,6 +317,7 @@ impl GrpcDomainType for Notification {
                         .timestamp
                         .ok_or(Error::invalid_format("Timestamp not provided"))?,
                 )?,
+                ignore: value.ignore,
                 channel_id: not.channel_id as UniqueId,
                 sender_id: not.sender_id,
                 message: Message::from_grpc(
@@ -319,6 +332,7 @@ impl GrpcDomainType for Notification {
                         .timestamp
                         .ok_or(Error::invalid_format("Timestamp not provided"))?,
                 )?,
+                ignore: value.ignore,
                 post_id: not.post_id as UniqueId,
                 commend_id: not.comment_id as UniqueId,
                 sender_id: not.sender_id,
@@ -331,12 +345,14 @@ impl GrpcDomainType for Notification {
             Notification::Invite {
                 notification_id,
                 timestamp,
+                ignore,
                 channel_id,
                 invited_by,
                 uninvited,
             } => Ok(grpc::Notification {
                 notification_id: notification_id as u64,
                 timestamp: Some(timestamp.into_grpc()?),
+                ignore,
                 notification: Some(grpc::notification::Notification::Invite(
                     grpc::InviteNotification {
                         channel_id: channel_id as u64,
@@ -348,12 +364,14 @@ impl GrpcDomainType for Notification {
             Notification::Message {
                 notification_id,
                 timestamp,
+                ignore,
                 channel_id,
                 sender_id,
                 message,
             } => Ok(grpc::Notification {
                 notification_id: notification_id as u64,
                 timestamp: Some(timestamp.into_grpc()?),
+                ignore,
                 notification: Some(grpc::notification::Notification::Message(
                     grpc::MessageNotification {
                         channel_id: channel_id as u64,
@@ -365,12 +383,14 @@ impl GrpcDomainType for Notification {
             Notification::Comment {
                 notification_id,
                 timestamp,
+                ignore,
                 post_id,
                 commend_id,
                 sender_id,
             } => Ok(grpc::Notification {
                 notification_id: notification_id as u64,
                 timestamp: Some(timestamp.into_grpc()?),
+                ignore,
                 notification: Some(grpc::notification::Notification::Comment(
                     grpc::CommentNotification {
                         post_id: post_id as u64,

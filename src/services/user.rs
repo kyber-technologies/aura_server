@@ -12,9 +12,13 @@ use aura_rust::user::v1::{
     AuthRequest, AuthResponse, BlockRequest, BlockResponse, CreateRequest, CreateResponse,
     DeleteRequest, DeleteResponse, ExistsRequest, ExistsResponse, FollowRequest, FollowResponse,
     GetRequest, GetResponse, IsBlockedRequest, IsBlockedResponse, SearchRequest, SearchResponse,
-    UpdateRequest, UpdateResponse, VerifyEmailRequest, VerifyEmailResponse, is_blocked_response,
+    SubscribeRequest, SubscribeResponse, UpdateRequest, UpdateResponse, VerifyEmailRequest,
+    VerifyEmailResponse, is_blocked_response,
 };
 use smol_str::format_smolstr;
+use tokio_stream::StreamExt;
+use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
+use tonic::codegen::BoxStream;
 use tonic::{Request, Response, Status};
 
 pub struct Service {
@@ -71,6 +75,53 @@ impl Service {
                 }
             }
         }
+    }
+
+    async fn _subscribe(
+        &self,
+        request: Request<SubscribeRequest>,
+    ) -> Result<BoxStream<SubscribeResponse>, Status> {
+        let mut database = self
+            .state
+            .database()
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let (user, _) = auth::verify(&mut database, &request)
+            .await
+            .map_err(|e| Status::unauthenticated(e.to_string()))?;
+
+        let rx = self
+            .state
+            .notifications()
+            .subscribe(&user.user_id)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let stream = tokio_stream::wrappers::BroadcastStream::new(rx).map(|result| match result {
+            Ok(notification) => match notification.into_grpc() {
+                Ok(notification) => Ok(SubscribeResponse {
+                    notifications: vec![notification],
+                    error: None,
+                }),
+                Err(err) => Ok(SubscribeResponse {
+                    notifications: Vec::new(),
+                    error: Some(err.into()),
+                }),
+            },
+
+            Err(BroadcastStreamRecvError::Lagged(skipped)) => Ok(SubscribeResponse {
+                notifications: Vec::new(),
+                error: Some(
+                    Error::internal(format_smolstr!(
+                        "Stream lagged, skipped {skipped} notifications"
+                    ))
+                    .into(),
+                ),
+            }),
+        });
+
+        Ok(Box::pin(stream))
     }
 
     async fn _verify_email(
@@ -318,6 +369,16 @@ impl UserService for Service {
             });
 
         Ok(Response::new(resp))
+    }
+
+    type SubscribeStream = BoxStream<SubscribeResponse>;
+
+    async fn subscribe(
+        &self,
+        request: Request<SubscribeRequest>,
+    ) -> Result<Response<Self::SubscribeStream>, Status> {
+        let stream = self._subscribe(request).await?;
+        Ok(Response::new(stream))
     }
 
     async fn verify_email(

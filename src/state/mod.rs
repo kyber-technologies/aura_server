@@ -3,6 +3,7 @@ use crate::error::Error;
 use crate::state::cooldowns::CooldownManager;
 use crate::state::database::{Database, DatabaseConnection};
 use crate::state::id_factory::IdFactory;
+use crate::state::notifications::NotificationManager;
 use crate::state::status::ServerStatus;
 use email::EmailRegistry;
 use embedder::TextEmbedder;
@@ -15,6 +16,7 @@ pub mod database;
 pub mod email;
 pub mod embedder;
 pub mod id_factory;
+pub mod notifications;
 pub mod status;
 
 #[derive(Clone)]
@@ -24,8 +26,9 @@ pub struct ServerState {
     exit: Arc<Notify>,
     embedder: TextEmbedder,
     id_factory: IdFactory,
-    cooldown: CooldownManager,
+    cooldown: Arc<CooldownManager>,
     status: Arc<Mutex<ServerStatus>>,
+    notifications: Arc<NotificationManager>,
 }
 
 impl ServerState {
@@ -51,8 +54,9 @@ impl ServerState {
             exit: Arc::new(Notify::new()),
             embedder,
             id_factory: IdFactory::new(machine_id.parse().expect("Invalid machine ID")),
-            cooldown: CooldownManager::new(),
+            cooldown: Arc::new(CooldownManager::new()),
             status: Arc::new(Mutex::new(ServerStatus::new())),
+            notifications: Arc::new(NotificationManager::new()),
         }
     }
 
@@ -150,6 +154,10 @@ impl ServerState {
                 tokio.global_queue_depth().to_string(),
             ),
         ])
+    }
+
+    pub fn notifications(&self) -> Arc<NotificationManager> {
+        self.notifications.clone()
     }
 
     pub fn dispose(self) {

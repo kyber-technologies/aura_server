@@ -5,36 +5,33 @@ use dashmap::Entry;
 use serde::de::IntoDeserializer;
 use serde::de::value::StringDeserializer;
 use smol_str::format_smolstr;
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::Instant;
 use tonic::Request;
 
 #[derive(Clone)]
 pub struct CooldownManager {
-    cooldowns: Arc<FastMap<String, Duration>>,
+    cooldowns: FastMap<String, Duration>,
     map: FastDashMap<(String, &'static str), Instant>,
 }
 
 impl CooldownManager {
     pub fn new() -> Self {
         Self {
-            cooldowns: Arc::new(
-                config::get()
-                    .network
-                    .method_cooldowns
-                    .iter()
-                    .map(|(k, v)| {
-                        (
+            cooldowns: config::get()
+                .network
+                .method_cooldowns
+                .iter()
+                .map(|(k, v)| {
+                    (
                             k.to_string(),
                             utils::serde_duration::deserialize::<
                                 StringDeserializer<serde_json::Error>,
                             >(v.clone().into_deserializer())
                             .expect("Failed to deserialize duration"),
                         )
-                    })
-                    .collect(),
-            ),
+                })
+                .collect(),
             map: FastDashMap::with_capacity_and_hasher(1024, Default::default()),
         }
     }

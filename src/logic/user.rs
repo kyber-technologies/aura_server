@@ -4,6 +4,7 @@ use crate::error::Error;
 use crate::logic::resource;
 use crate::schema::{channel_members, channels, user_blocks, user_follows, users};
 use crate::state::database::DatabaseConnection;
+use crate::state::notifications::NotificationManager;
 use crate::types::common::Timestamp;
 use crate::types::resource::{ResourceDescriptor, ResourceId, ResourceMeta, ResourceNamespace};
 use crate::types::user::{Notification, Notifications, User, UserProfile, UserRole, UserSettings};
@@ -335,6 +336,7 @@ pub async fn is_blocked_by(
 
 pub async fn push_notifications(
     database: &mut DatabaseConnection,
+    manager: &NotificationManager,
     user_id: &str,
     new_notifications: impl IntoIterator<Item = Notification>,
     settings: &UserSettings,
@@ -353,10 +355,14 @@ pub async fn push_notifications(
 
     let mut notifications = Notifications::from_db(existing)?;
 
-    for notification in new_notifications {
-        if notification.should_notify(settings) {
-            notifications.0.push(notification);
+    for mut notification in new_notifications {
+        if !notification.should_notify(settings) {
+            notification.set_ignore(true);
         }
+
+        notifications.0.push(notification.clone());
+
+        manager.send(user_id, notification).await;
     }
 
     notifications.0.retain(|notification| {
