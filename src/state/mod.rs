@@ -165,15 +165,25 @@ impl ServerState {
         tracing::info!("Cleaning resource directory...");
         let mut res_entries = tokio::fs::read_dir(&config::get().service.resource_dir)
             .await
-            .map_err(|e| Error::internal(format!("Failed to read resource directory: {}", e)))?;
+            .map_err(|e| {
+                Error::internal(smol_str::format_smolstr!(
+                    "Failed to read resource directory: {}",
+                    e
+                ))
+            })?;
 
         while let Some(entry) = res_entries.next_entry().await.map_err(|err| {
-            Error::internal(format!("Failed to read resource directory entry: {err}"))
+            Error::internal(smol_str::format_smolstr!(
+                "Failed to read resource directory entry: {err}"
+            ))
         })? {
             // Don't delete the built-in "aura" directory
             if entry.file_name() != "aura" {
                 tokio::fs::remove_dir_all(entry.path()).await.map_err(|e| {
-                    Error::internal(format!("Failed to remove resource directory: {}", e))
+                    Error::internal(smol_str::format_smolstr!(
+                        "Failed to remove resource directory: {}",
+                        e
+                    ))
                 })?;
             }
         }

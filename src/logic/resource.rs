@@ -12,6 +12,7 @@ use diesel::{BoolExpressionMethods, BoxableExpression, ExpressionMethods, Select
 use diesel::{OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
 use image::imageops::FilterType;
+use smol_str::format_smolstr;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use tokio::fs;
@@ -27,9 +28,10 @@ pub async fn create(
     let max_upload_bytes = config::get().service.max_upload_size;
 
     if desc.meta.size > max_upload_bytes {
-        return Err(Error::invalid_format(format!(
+        return Err(Error::invalid_format(format_smolstr!(
             "Resource size ({} bytes) exceeds maximum allowed upload limit ({} bytes)",
-            desc.meta.size, max_upload_bytes
+            desc.meta.size,
+            max_upload_bytes
         )));
     }
 
@@ -123,7 +125,7 @@ pub async fn is_download_authorized(
         ResourceNamespace::Channel(channel_id) => chat::get_channel(
             database,
             channel_id.parse().map_err(|err| {
-                Error::internal(format!(
+                Error::internal(format_smolstr!(
                     "Failed to parse channel ID from resource namespace: {err}"
                 ))
             })?,
@@ -149,7 +151,7 @@ pub async fn is_upload_authorized(
         ResourceNamespace::Channel(channel_id) => chat::get_channel_member_perm(
             database,
             channel_id.parse().map_err(|err| {
-                Error::internal(format!(
+                Error::internal(format_smolstr!(
                     "Failed to parse channel ID from resource namespace: {err}"
                 ))
             })?,
@@ -160,7 +162,7 @@ pub async fn is_upload_authorized(
 
         ResourceNamespace::Post(post_id) => {
             let post_id_parsed = post_id.parse().map_err(|err| {
-                Error::internal(format!(
+                Error::internal(format_smolstr!(
                     "Failed to parse post ID from resource namespace: {err}"
                 ))
             })?;
@@ -262,7 +264,7 @@ pub async fn write_stream_to_path(
 ) -> Result<(), Error> {
     let file = fs::File::create(path)
         .await
-        .map_err(|e| Error::internal(format!("Failed opening write file: {e}")))?;
+        .map_err(|e| Error::internal(format_smolstr!("Failed opening write file: {e}")))?;
 
     let max_upload_bytes = config::get().service.max_upload_size as u64;
     let mut total_written: u64 = 0;
@@ -282,13 +284,13 @@ pub async fn write_stream_to_path(
 
         buf.write_all(&data)
             .await
-            .map_err(|e| Error::internal(format!("Failed writing file: {e}")))?;
+            .map_err(|e| Error::internal(format_smolstr!("Failed writing file: {e}")))?;
         total_written += chunk_len;
     }
 
     buf.flush()
         .await
-        .map_err(|e| Error::internal(format!("Failed flushing file: {e}")))?;
+        .map_err(|e| Error::internal(format_smolstr!("Failed flushing file: {e}")))?;
 
     Ok(())
 }
@@ -379,14 +381,16 @@ impl ResourceFormat {
 
                 tokio::task::spawn_blocking(move || {
                     let file = std::fs::File::open(&input_p).map_err(|err| {
-                        Error::internal(format!("Failed to open temp file path: {err}"))
+                        Error::internal(format_smolstr!("Failed to open temp file path: {err}"))
                     })?;
 
                     let reader = std::io::BufReader::new(file);
 
                     let img = image::ImageReader::with_format(reader, img_format)
                         .decode()
-                        .map_err(|err| Error::internal(format!("Failed to decode image: {err}")))?;
+                        .map_err(|err| {
+                            Error::internal(format_smolstr!("Failed to decode image: {err}"))
+                        })?;
 
                     let resized = if img.width() > config.max_image_width
                         || img.height() > config.max_image_height
@@ -402,21 +406,27 @@ impl ResourceFormat {
 
                     let webp = webp::Encoder::from_image(&resized)
                         .map_err(|err| {
-                            Error::internal(format!("Failed to encode image into WebP: {err}"))
+                            Error::internal(format_smolstr!(
+                                "Failed to encode image into WebP: {err}"
+                            ))
                         })?
                         .encode_advanced(webp_config)
                         .map_err(|err| {
-                            Error::internal(format!("Failed to encode image into WebP: {err:?}"))
+                            Error::internal(format_smolstr!(
+                                "Failed to encode image into WebP: {err:?}"
+                            ))
                         })?;
 
                     std::fs::write(&output_p, webp.deref()).map_err(|err| {
-                        Error::internal(format!("Failed to write encoded image to disk: {err}"))
+                        Error::internal(format_smolstr!(
+                            "Failed to write encoded image to disk: {err}"
+                        ))
                     })?;
 
                     Ok::<(), Error>(())
                 })
                 .await
-                .map_err(|err| Error::internal(format!("Tokio join error: {err:?}")))??;
+                .map_err(|err| Error::internal(format_smolstr!("Tokio join error: {err:?}")))??;
 
                 Ok(())
             }
@@ -448,7 +458,9 @@ impl ResourceFormat {
             "pdf" => {
                 tokio::fs::copy(input_path, output_path)
                     .await
-                    .map_err(|err| Error::internal(format!("Failed to copy file: {err}")))?;
+                    .map_err(|err| {
+                        Error::internal(format_smolstr!("Failed to copy file: {err}"))
+                    })?;
                 Ok(())
             }
 
@@ -469,13 +481,12 @@ async fn run_ffmpeg_file(
     }
     cmd.arg(output_path);
 
-    let status = cmd
-        .status()
-        .await
-        .map_err(|err| Error::internal(format!("FFmpeg execution failed to start: {err:?}")))?;
+    let status = cmd.status().await.map_err(|err| {
+        Error::internal(format_smolstr!("FFmpeg execution failed to start: {err:?}"))
+    })?;
 
     if !status.success() {
-        return Err(Error::internal(format!(
+        return Err(Error::internal(format_smolstr!(
             "FFmpeg transcoding failed with exit code: {:?}",
             status.code()
         )));

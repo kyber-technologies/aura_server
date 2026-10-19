@@ -13,6 +13,7 @@ use aura_rust::posting::v1::{
     PublishRequest, PublishResponse, ReactRequest, ReactResponse, SearchRequest, SearchResponse,
     UnpublishRequest, UnpublishResponse, publish_response,
 };
+use smol_str::format_smolstr;
 use tonic::{Request, Response, Status};
 
 pub struct Service {
@@ -34,7 +35,7 @@ impl Service {
 
         let user_vector = feed::fetch_user_vector(&mut database, &user.user_id)
             .await
-            .map_err(|e| Error::internal(format!("Failed fetching user vector: {e}")))?;
+            .map_err(|e| Error::internal(format_smolstr!("Failed fetching user vector: {e}")))?;
 
         let post_ids = feed::fetch_feed(
             &mut database,
@@ -45,7 +46,7 @@ impl Service {
             req.index as usize,
         )
         .await
-        .map_err(|e| Error::internal(format!("Failed fetching feed: {e}")))?
+        .map_err(|e| Error::internal(format_smolstr!("Failed fetching feed: {e}")))?
         .transmute_vec();
 
         Ok(FeedResponse {

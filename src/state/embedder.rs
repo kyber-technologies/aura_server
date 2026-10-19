@@ -2,6 +2,7 @@ use crate::config;
 use crate::error::Error;
 use fastembed::{EmbeddingModel, TextEmbedding, TextInitOptions};
 use pgvector::Vector;
+use smol_str::format_smolstr;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 
@@ -68,13 +69,13 @@ impl TextEmbedder {
                 .with_intra_threads(config.database.embedding_threads)
                 .with_max_length(config.database.embedding_max_length),
         )
-        .map_err(|err| Error::internal(format!("Failed to initialize model: {err}")))?;
+        .map_err(|err| Error::internal(format_smolstr!("Failed to initialize model: {err}")))?;
 
         let text_refs: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
 
         let embeddings = model
             .embed(&text_refs, Some(32))
-            .map_err(|err| Error::internal(format!("Failed to embed text: {err}")))?;
+            .map_err(|err| Error::internal(format_smolstr!("Failed to embed text: {err}")))?;
 
         Ok(embeddings.into_iter().map(Vector::from).collect())
     }

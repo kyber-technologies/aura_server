@@ -4,6 +4,7 @@ use crate::{config, utils};
 use dashmap::Entry;
 use serde::de::IntoDeserializer;
 use serde::de::value::StringDeserializer;
+use smol_str::format_smolstr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::Instant;
@@ -49,7 +50,9 @@ impl CooldownManager {
             .get("forwarded-addr")
             .ok_or_else(|| Error::internal("No forwarded address found"))?
             .to_str()
-            .map_err(|err| Error::internal(format!("Failed to parse forwarded address: {err}")))?;
+            .map_err(|err| {
+                Error::internal(format_smolstr!("Failed to parse forwarded address: {err}"))
+            })?;
 
         let now = Instant::now();
 
@@ -61,7 +64,7 @@ impl CooldownManager {
                 if *last_time + cooldown > now {
                     let remaining = (*last_time + cooldown) - now;
                     return Err(Error::rate_limit(
-                        format!(
+                        format_smolstr!(
                             "This function is on cooldown. Try again in {}s.",
                             remaining.as_secs().max(1)
                         ),

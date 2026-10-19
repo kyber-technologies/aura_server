@@ -1,5 +1,6 @@
 use crate::config;
 use crate::error::Error;
+use smol_str::format_smolstr;
 use std::collections::HashMap;
 use std::hash::{BuildHasher, Hash};
 use std::mem::ManuallyDrop;
@@ -12,6 +13,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub mod serde_duration {
     use serde::de::Error;
     use serde::{Deserialize, Deserializer, Serializer};
+    use smol_str::{SmolStr, format_smolstr};
     use std::time::Duration;
 
     pub fn serialize<S>(duration: &Duration, serializer: S) -> Result<S::Ok, S::Error>
@@ -44,26 +46,26 @@ pub mod serde_duration {
         parse_duration_str(&s).map_err(D::Error::custom)
     }
 
-    fn parse_duration_str(s: &str) -> Result<Duration, String> {
+    fn parse_duration_str(s: &str) -> Result<Duration, SmolStr> {
         let s = s.trim();
 
         if let Some(val_str) = s.strip_suffix("ms") {
             let val: u64 = val_str
                 .parse()
-                .map_err(|_| format!("Invalid millisecond number in '{s}'"))?;
+                .map_err(|_| format_smolstr!("Invalid millisecond number in '{s}'"))?;
             Ok(Duration::from_millis(val))
         } else if let Some(val_str) = s.strip_suffix("us") {
             let val: u64 = val_str
                 .parse()
-                .map_err(|_| format!("Invalid microsecond number in '{s}'"))?;
+                .map_err(|_| format_smolstr!("Invalid microsecond number in '{s}'"))?;
             Ok(Duration::from_micros(val))
         } else if let Some(val_str) = s.strip_suffix('s') {
             let val: u64 = val_str
                 .parse()
-                .map_err(|_| format!("Invalid second number in '{s}'"))?;
+                .map_err(|_| format_smolstr!("Invalid second number in '{s}'"))?;
             Ok(Duration::from_secs(val))
         } else {
-            Err(format!(
+            Err(format_smolstr!(
                 "Invalid duration unit in '{s}'. Expected 's', 'ms', or 'us'"
             ))
         }
@@ -105,10 +107,9 @@ impl<T> SafeStreaming<T> {
     }
 
     pub async fn next_safe(&mut self) -> Option<Result<T, Error>> {
-        self.0
-            .next()
-            .await
-            .map(|v| v.map_err(|err| Error::internal(format!("Got invalid stream item: {err}"))))
+        self.0.next().await.map(|v| {
+            v.map_err(|err| Error::internal(format_smolstr!("Got invalid stream item: {err}")))
+        })
     }
 }
 

@@ -14,6 +14,7 @@ use aura_rust::user::v1::{
     GetRequest, GetResponse, IsBlockedRequest, IsBlockedResponse, SearchRequest, SearchResponse,
     UpdateRequest, UpdateResponse, VerifyEmailRequest, VerifyEmailResponse, is_blocked_response,
 };
+use smol_str::format_smolstr;
 use tonic::{Request, Response, Status};
 
 pub struct Service {
@@ -204,7 +205,7 @@ impl Service {
             .password
             .map(auth::hash)
             .unwrap_or(Ok(user.password))
-            .map_err(|err| Error::internal(format!("Hashing password failed: {err}")))?;
+            .map_err(|err| Error::internal(format_smolstr!("Hashing password failed: {err}")))?;
         user.settings = settings;
 
         user::update(&mut database, user).await?;

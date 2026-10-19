@@ -12,6 +12,7 @@ use aura_rust::resource::v1::{
     DownloadRequest, DownloadResponse, MetaRequest, MetaResponse, UploadRequest, UploadResponse,
     download_response, upload_response,
 };
+use smol_str::format_smolstr;
 use std::slice;
 use tonic::codegen::BoxStream;
 use tonic::codegen::tokio_stream::StreamExt;
@@ -78,7 +79,7 @@ impl Service {
         let raw_temp_file = tempfile::Builder::new()
             .prefix("raw_upload")
             .tempfile()
-            .map_err(|err| Error::internal(format!("Failed to create temp file: {err}")))?;
+            .map_err(|err| Error::internal(format_smolstr!("Failed to create temp file: {err}")))?;
         let raw_temp_path = raw_temp_file.path().to_path_buf();
 
         let stream_data = stream.into_inner().map(|req| match req {
@@ -91,7 +92,7 @@ impl Service {
                 )),
                 Payload::Data(data) => Ok(data),
             },
-            Err(err) => Err(Error::internal(format!(
+            Err(err) => Err(Error::internal(format_smolstr!(
                 "Got invalid upload request: {err}"
             ))),
         });
@@ -105,7 +106,9 @@ impl Service {
         let final_path = resource::build_path(&resource_id);
         if let Some(parent) = final_path.parent() {
             tokio::fs::create_dir_all(parent).await.map_err(|e| {
-                Error::internal(format!("Failed to create destination directory: {e}"))
+                Error::internal(format_smolstr!(
+                    "Failed to create destination directory: {e}"
+                ))
             })?;
         }
 
@@ -114,7 +117,9 @@ impl Service {
             .await?;
 
         let finalized_metadata = tokio::fs::metadata(&final_path).await.map_err(|e| {
-            Error::internal(format!("Failed to read finalized resource metadata: {e}"))
+            Error::internal(format_smolstr!(
+                "Failed to read finalized resource metadata: {e}"
+            ))
         })?;
 
         let mut final_desc = desc;

@@ -1,6 +1,7 @@
 use crate::error::Error;
 use crate::types::UniqueId;
 use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
+use smol_str::format_smolstr;
 
 #[derive(Clone)]
 pub struct IdFactory {
@@ -29,6 +30,6 @@ impl IdFactory {
         self.factory
             .next_id()
             .map(|id| id.to_u64() as i64)
-            .map_err(|err| Error::internal(format!("Failed to generate ID: {err}")))
+            .map_err(|err| Error::internal(format_smolstr!("Failed to generate ID: {err}")))
     }
 }

@@ -7,6 +7,7 @@ use crate::types::user::User;
 use argon2::password_hash::phc::Salt;
 use argon2::{Argon2, Params, PasswordHasher, PasswordVerifier, Version};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use smol_str::format_smolstr;
 use std::sync::OnceLock;
 use std::time::SystemTime;
 use tonic::Request;
@@ -114,7 +115,7 @@ pub fn hash(pass: String) -> Result<String, Error> {
 
     let hash = argon2
         .hash_password_with_salt(pass.as_bytes(), &salt)
-        .map_err(|err| Error::internal(format!("Failed to hash password: {err}")))?;
+        .map_err(|err| Error::internal(format_smolstr!("Failed to hash password: {err}")))?;
 
     Ok(hash.to_string())
 }

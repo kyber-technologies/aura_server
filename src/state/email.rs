@@ -5,6 +5,7 @@ use lettre::message::header::ContentType;
 use lettre::message::{Mailbox, MessageBuilder, MultiPart};
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{Address, AsyncSmtpTransport, AsyncTransport, Tokio1Executor};
+use smol_str::format_smolstr;
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tera::{Context, Tera};
@@ -77,7 +78,7 @@ impl EmailRegistry {
 
         let expires = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_err(|err| Error::internal(format!("Failed to get system time: {err}")))?
+            .map_err(|err| Error::internal(format_smolstr!("Failed to get system time: {err}")))?
             .as_secs()
             + config::get().email.exp;
 
@@ -159,7 +160,9 @@ impl EmailRegistry {
         let html = self
             .tera
             .render(EMAIL_CODE_TEMPLATE_NAME, &context)
-            .map_err(|err| Error::internal(format!("Failed to render email template: {err}")))?;
+            .map_err(|err| {
+                Error::internal(format_smolstr!("Failed to render email template: {err}"))
+            })?;
 
         Ok((text, html))
     }
