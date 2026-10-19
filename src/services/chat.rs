@@ -38,6 +38,12 @@ impl Service {
         let args = request.into_inner();
         let channel_id = self.state.id_factory().next_id()?;
 
+        if args.members.is_empty() {
+            return Err(Error::invalid_format(
+                "Channel must have at least one member",
+            ));
+        }
+
         for user_id in args.members.keys() {
             let (_, user) = user::get(&mut database, slice::from_ref(user_id))
                 .await?
