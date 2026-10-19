@@ -1,6 +1,6 @@
 use crate::auth;
 use crate::error::Error;
-use crate::logic::chat;
+use crate::logic::{chat, user};
 use crate::state::ServerState;
 use crate::types::chat::{Channel, ChannelPermission, Message};
 use crate::types::common::Timestamp;
@@ -13,6 +13,8 @@ use aura_rust::chat::v1::{
     ReadResponse, SendRequest, SendResponse, SetUserPermRequest, SetUserPermResponse,
     create_channel_response, send_response,
 };
+use smol_str::format_smolstr;
+use std::slice;
 use tonic::{Request, Response, Status};
 
 pub struct Service {
@@ -33,17 +35,31 @@ impl Service {
         let mut database = self.state.database().await?;
 
         let (user, _) = auth::verify(&mut database, &request).await?;
-        let channel_args = request.into_inner();
+        let args = request.into_inner();
         let channel_id = self.state.id_factory().next_id()?;
+
+        for user_id in args.members.keys() {
+            let (_, user) = user::get(&mut database, slice::from_ref(user_id))
+                .await?
+                .into_iter()
+                .next()
+                .ok_or_else(|| Error::not_found(format_smolstr!("User {user_id} not found")))?;
+
+            if !user.settings.allow_invites {
+                return Err(Error::restricted(format_smolstr!(
+                    "User {user_id} does not allow invites"
+                )));
+            }
+        }
 
         let channel = chat::create_channel(
             &mut database,
             self.state.id_factory(),
             Channel {
                 channel_id,
-                name: channel_args.name,
-                description: channel_args.description,
-                members: channel_args
+                name: args.name,
+                description: args.description,
+                members: args
                     .members
                     .into_iter()
                     .map(|(user, perm)| {
