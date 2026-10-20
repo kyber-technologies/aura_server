@@ -1,6 +1,7 @@
 use crate::config;
 use crate::error::Error;
 use fastembed::{EmbeddingModel, TextEmbedding, TextInitOptions};
+use ort::environment::{Environment, GlobalThreadPoolOptions};
 use pgvector::Vector;
 use smol_str::format_smolstr;
 use std::sync::Arc;
@@ -17,8 +18,19 @@ impl TextEmbedder {
     pub fn new() -> Self {
         let config = config::get();
 
+        let env = ort::init()
+            .with_global_thread_pool(
+                GlobalThreadPoolOptions::default()
+                    .with_intra_threads(config.database.embedding_threads)
+                    .expect("Failed to build ORT environment with intra threads"),
+            )
+            .build()
+            .expect("Failed to build ORT environment");
+
         let (sender, mut receiver) = mpsc::channel::<Job>(100);
         let sender_clone = sender.clone();
+
+        let env2 = env.clone();
 
         tokio::spawn(async move {
             let semaphore = Arc::new(tokio::sync::Semaphore::new(
@@ -31,8 +43,10 @@ impl TextEmbedder {
                     Err(_) => break,
                 };
 
+                let env3 = env2.clone();
+
                 tokio::task::spawn_blocking(move || {
-                    let result = Self::generate_embeddings(&texts);
+                    let result = Self::generate_embeddings(&texts, env3);
                     let _ = respond_to.send(result);
 
                     drop(permit);
@@ -61,13 +75,14 @@ impl TextEmbedder {
             .map_err(|_| Error::internal("Embedding task panicked or dropped"))?
     }
 
-    fn generate_embeddings(texts: &[String]) -> Result<Vec<Vector>, Error> {
+    fn generate_embeddings(texts: &[String], env: Environment) -> Result<Vec<Vector>, Error> {
         let config = config::get();
 
         let mut model = TextEmbedding::try_new(
             TextInitOptions::new(EmbeddingModel::AllMiniLML6V2)
                 .with_intra_threads(config.database.embedding_threads)
-                .with_max_length(config.database.embedding_max_length),
+                .with_max_length(config.database.embedding_max_length)
+                .with_environment(env),
         )
         .map_err(|err| Error::internal(format_smolstr!("Failed to initialize model: {err}")))?;
 
