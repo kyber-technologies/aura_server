@@ -3,9 +3,9 @@ use crate::database::message as msg_db;
 use crate::error::Error;
 use crate::logic::user::push_notifications;
 use crate::schema::{channel_members, channels, messages, users};
+use crate::state::ServerState;
 use crate::state::database::DatabaseConnection;
 use crate::state::id_factory::IdFactory;
-use crate::state::notifications::NotificationManager;
 use crate::types::chat::{Channel, ChannelPermission, Message};
 use crate::types::common::Timestamp;
 use crate::types::user::{Notification, UserSettings};
@@ -16,7 +16,7 @@ use diesel_async::{AsyncConnection, RunQueryDsl};
 
 pub async fn create_channel(
     database: &mut DatabaseConnection,
-    notifications: &NotificationManager,
+    state: &ServerState,
     ids: &IdFactory,
     mut channel: Channel,
     owner: &str,
@@ -73,7 +73,7 @@ pub async fn create_channel(
 
                     push_notifications(
                         database,
-                        notifications,
+                        state,
                         &user_id,
                         [Notification::Invite {
                             notification_id: ids.next_id()?,
@@ -124,7 +124,7 @@ pub async fn delete_channel(
 
 pub async fn invite(
     database: &mut DatabaseConnection,
-    notifications: &NotificationManager,
+    state: &ServerState,
     ids: &IdFactory,
     channel_id: UniqueId,
     user_id: &str,
@@ -184,7 +184,7 @@ pub async fn invite(
 
             push_notifications(
                 database,
-                notifications,
+                state,
                 invited_user_id,
                 [Notification::Invite {
                     notification_id: ids.next_id()?,
@@ -205,7 +205,7 @@ pub async fn invite(
 
 pub async fn uninvite(
     database: &mut DatabaseConnection,
-    notifications: &NotificationManager,
+    state: &ServerState,
     ids: &IdFactory,
     channel_id: UniqueId,
     user_id: &str,
@@ -274,7 +274,7 @@ pub async fn uninvite(
 
             push_notifications(
                 database,
-                notifications,
+                state,
                 uninvited_user_id,
                 [Notification::Invite {
                     notification_id: ids.next_id()?,
@@ -411,7 +411,7 @@ pub async fn channel_exists(
 
 pub async fn send(
     database: &mut DatabaseConnection,
-    notifications: &NotificationManager,
+    state: &ServerState,
     ids: &IdFactory,
     message: Message,
 ) -> Result<Message, Error> {
@@ -452,7 +452,7 @@ pub async fn send(
 
                 push_notifications(
                     database,
-                    notifications,
+                    state,
                     &member_id,
                     [Notification::Message {
                         notification_id: ids.next_id()?,

@@ -3,12 +3,12 @@ use crate::database::user as db;
 use crate::error::Error;
 use crate::logic::resource;
 use crate::schema::{channel_members, channels, user_blocks, user_follows, users};
+use crate::state::ServerState;
 use crate::state::database::DatabaseConnection;
-use crate::state::notifications::NotificationManager;
 use crate::types::common::Timestamp;
 use crate::types::resource::{ResourceDescriptor, ResourceId, ResourceMeta, ResourceNamespace};
 use crate::types::user::{Notification, Notifications, User, UserProfile, UserRole, UserSettings};
-use crate::types::{DatabaseDomainType, FastMap, FastSet, UniqueId};
+use crate::types::{DatabaseDomainType, FastMap, FastSet, GrpcDomainType, UniqueId};
 use crate::utils::escape_like_pattern;
 use crate::{config, utils};
 use diesel::{
@@ -336,7 +336,7 @@ pub async fn is_blocked_by(
 
 pub async fn push_notifications(
     database: &mut DatabaseConnection,
-    manager: &NotificationManager,
+    state: &ServerState,
     user_id: &str,
     new_notifications: impl IntoIterator<Item = Notification>,
     settings: &UserSettings,
@@ -362,7 +362,9 @@ pub async fn push_notifications(
 
         notifications.0.push(notification.clone());
 
-        manager.send(user_id, notification).await;
+        state
+            .push_notification(user_id, &notification.into_grpc()?)
+            .await?;
     }
 
     notifications.0.retain(|notification| {

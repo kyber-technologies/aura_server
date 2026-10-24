@@ -3,8 +3,8 @@ use crate::error::Error;
 use crate::state::cooldowns::CooldownManager;
 use crate::state::database::{Database, DatabaseConnection};
 use crate::state::id_factory::IdFactory;
-use crate::state::notifications::NotificationManager;
 use crate::state::status::ServerStatus;
+use aura_rust::Message;
 use email::EmailRegistry;
 use embedder::TextEmbedder;
 use std::sync::Arc;
@@ -16,7 +16,6 @@ pub mod database;
 pub mod email;
 pub mod embedder;
 pub mod id_factory;
-pub mod notifications;
 pub mod status;
 
 #[derive(Clone)]
@@ -28,7 +27,7 @@ pub struct ServerState {
     id_factory: IdFactory,
     cooldown: Arc<CooldownManager>,
     status: Arc<Mutex<ServerStatus>>,
-    notifications: Arc<NotificationManager>,
+    nats: async_nats::Client,
 }
 
 impl ServerState {
@@ -42,9 +41,9 @@ impl ServerState {
             .await
             .expect("Failed to embed test data");
 
-        let machine_id = config::get().machine_id.as_str();
+        let config = config::get();
 
-        if machine_id.is_empty() {
+        if config.machine_id.is_empty() {
             panic!("No machine ID specified!");
         }
 
@@ -53,10 +52,20 @@ impl ServerState {
             emails: Arc::new(EmailRegistry::new().await),
             exit: Arc::new(Notify::new()),
             embedder,
-            id_factory: IdFactory::new(machine_id.parse().expect("Invalid machine ID")),
+            id_factory: IdFactory::new(config.machine_id.parse().expect("Invalid machine ID")),
             cooldown: Arc::new(CooldownManager::new()),
             status: Arc::new(Mutex::new(ServerStatus::new())),
-            notifications: Arc::new(NotificationManager::new()),
+            nats: async_nats::connect_with_options(
+                &config.nats.addr,
+                async_nats::ConnectOptions::new()
+                    .name(format!("aura-{}-service", config.machine_id))
+                    .connection_timeout(config.nats.connection_timeout)
+                    .request_timeout(Some(config.nats.request_timeout))
+                    .subscription_capacity(config.nats.subscription_capacity)
+                    .token(config.nats.token.clone()),
+            )
+            .await
+            .expect("Failed to connect to NATS"),
         }
     }
 
@@ -156,8 +165,39 @@ impl ServerState {
         ])
     }
 
-    pub fn notifications(&self) -> Arc<NotificationManager> {
-        self.notifications.clone()
+    pub async fn push_notification(
+        &self,
+        user_id: &str,
+        notification: &aura_rust::user::v1::Notification,
+    ) -> Result<(), Error> {
+        let subject = format!("aura.users.{user_id}.notifications");
+        let payload = notification.encode_to_vec();
+
+        self.nats
+            .publish(subject, payload.into())
+            .await
+            .map_err(|e| {
+                Error::internal(smol_str::format_smolstr!(
+                    "Failed to publish notification to NATS: {e}"
+                ))
+            })?;
+
+        Ok(())
+    }
+
+    pub async fn subscribe_notifications(
+        &self,
+        user_id: &str,
+    ) -> Result<async_nats::Subscriber, Error> {
+        let subject = format!("aura.users.{user_id}.notifications");
+
+        let subscriber = self.nats.subscribe(subject).await.map_err(|e| {
+            Error::internal(smol_str::format_smolstr!(
+                "Failed to subscribe to NATS notifications: {e}"
+            ))
+        })?;
+
+        Ok(subscriber)
     }
 
     pub fn dispose(self) {

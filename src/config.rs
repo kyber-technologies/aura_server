@@ -98,6 +98,7 @@ pub struct Config {
     pub database: DatabaseConfig,
     pub email: EmailConfig,
     pub log: LogConfig,
+    pub nats: NatsConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -355,6 +356,34 @@ impl Default for LogConfig {
             level: "info".to_string(),
             threads: false,
             time: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NatsConfig {
+    pub addr: String,
+    #[serde(with = "crate::utils::serde_duration")]
+    pub connection_timeout: Duration,
+    #[serde(with = "crate::utils::serde_duration")]
+    pub request_timeout: Duration,
+    pub subscription_capacity: usize,
+    pub token: String,
+}
+
+impl Default for NatsConfig {
+    fn default() -> Self {
+        Self {
+            addr: " 0.0.0.0:4222".to_string(),
+            connection_timeout: Duration::from_secs(8),
+            request_timeout: Duration::from_secs(10),
+            subscription_capacity: u32::MAX as usize,
+            token: if cfg!(any(debug_assertions, feature = "testing")) {
+                "./dev/nats-token"
+            } else {
+                "./secure/nats-token"
+            }
+            .to_string(),
         }
     }
 }

@@ -7,6 +7,7 @@ use crate::types::common::Timestamp;
 use crate::types::resource::ResourceId;
 use crate::types::user::{Notifications, User, UserRole, UserSettings};
 use crate::utils::ConvertHashMap;
+use aura_rust::Message;
 use aura_rust::user::v1::user_service_server::UserService;
 use aura_rust::user::v1::{
     AuthRequest, AuthResponse, BlockRequest, BlockResponse, CreateRequest, CreateResponse,
@@ -17,7 +18,6 @@ use aura_rust::user::v1::{
 };
 use smol_str::format_smolstr;
 use tokio_stream::StreamExt;
-use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tonic::codegen::BoxStream;
 use tonic::{Request, Response, Status};
 
@@ -91,34 +91,30 @@ impl Service {
             .await
             .map_err(|e| Status::unauthenticated(e.to_string()))?;
 
-        let rx = self
+        let subscriber = self
             .state
-            .notifications()
-            .subscribe(&user.user_id)
+            .subscribe_notifications(&user.user_id)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        let stream = tokio_stream::wrappers::BroadcastStream::new(rx).map(|result| match result {
-            Ok(notification) => match notification.into_grpc() {
-                Ok(notification) => Ok(SubscribeResponse {
+        let stream = subscriber.map(|msg| {
+            let response = match aura_rust::user::v1::Notification::decode(msg.payload) {
+                Ok(notification) => SubscribeResponse {
                     notifications: vec![notification],
                     error: None,
-                }),
-                Err(err) => Ok(SubscribeResponse {
+                },
+                Err(err) => SubscribeResponse {
                     notifications: Vec::new(),
-                    error: Some(err.into()),
-                }),
-            },
+                    error: Some(
+                        Error::internal(format_smolstr!(
+                            "Failed to decode notification payload: {err}"
+                        ))
+                        .into(),
+                    ),
+                },
+            };
 
-            Err(BroadcastStreamRecvError::Lagged(skipped)) => Ok(SubscribeResponse {
-                notifications: Vec::new(),
-                error: Some(
-                    Error::internal(format_smolstr!(
-                        "Stream lagged, skipped {skipped} notifications"
-                    ))
-                    .into(),
-                ),
-            }),
+            Ok(response)
         });
 
         Ok(Box::pin(stream))

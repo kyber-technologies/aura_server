@@ -29,7 +29,7 @@ pub const CREATE: Command = Command {
 
             let channel = chat::create_channel(
                 &mut database,
-                &state.notifications(),
+                &state,
                 ids,
                 Channel {
                     channel_id,
@@ -112,7 +112,7 @@ pub const INVITE: Command = Command {
             if uninvite {
                 chat::uninvite(
                     &mut database,
-                    &state.notifications(),
+                    &state,
                     state.id_factory(),
                     channel_id,
                     &user,
@@ -123,7 +123,7 @@ pub const INVITE: Command = Command {
             } else {
                 chat::invite(
                     &mut database,
-                    &state.notifications(),
+                    &state,
                     state.id_factory(),
                     channel_id,
                     &user,
@@ -191,7 +191,7 @@ pub const SEND: Command = Command {
 
             chat::send(
                 &mut database,
-                &state.notifications(),
+                &state,
                 ids,
                 Message {
                     message_id,
