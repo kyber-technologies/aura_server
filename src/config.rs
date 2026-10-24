@@ -374,7 +374,7 @@ pub struct NatsConfig {
 impl Default for NatsConfig {
     fn default() -> Self {
         Self {
-            addr: " 0.0.0.0:4222".to_string(),
+            addr: "0.0.0.0:4222".to_string(),
             connection_timeout: Duration::from_secs(8),
             request_timeout: Duration::from_secs(10),
             subscription_capacity: u32::MAX as usize,
