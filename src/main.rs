@@ -15,7 +15,6 @@ use tonic::transport::{Identity, Server, ServerTlsConfig};
 use tower_governor::GovernorLayer;
 use tower_governor::governor::GovernorConfigBuilder;
 use tower_governor::key_extractor::SmartIpKeyExtractor;
-use tracing::level_filters::LevelFilter;
 
 mod auth;
 mod config;
