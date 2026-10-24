@@ -11,7 +11,7 @@ tokio-util = { version = "0.7.19", features = ["io"] }
 tokio-stream = { version = "0.1.19", default-features = false, features = ["sync"] }
 
 tracing = { version = "0.1.44", features = ["max_level_info"] }
-tracing-subscriber = { version = "0.3.23", default-features = false, features = ["std", "ansi", "fmt"] }
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["std", "ansi", "fmt", "env-filter"] }
 
 tonic = { version = "0.14.6", default-features = false, features = ["server", "router", "zstd", "tls-aws-lc"] }
 tower_governor = { version = "0.8.0", default-features = false, features = ["tonic"] }

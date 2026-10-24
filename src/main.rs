@@ -44,14 +44,15 @@ fn main() {
 
     let (mut readline, stdout) = console::create();
 
+    let filter_str = format!("{},async_nats=warn", config.log.level);
+    let filter = tracing_subscriber::EnvFilter::new(filter_str);
+
     let logger = tracing_subscriber::FmtSubscriber::builder()
+        .with_env_filter(filter)
         .with_file(config.log.file_names)
         .with_target(config.log.targets)
         .with_thread_names(config.log.threads)
         .with_thread_ids(config.log.threads)
-        .with_max_level(
-            LevelFilter::from_str(config.log.level.as_str()).expect("Invalid log level"),
-        )
         .with_writer(stdout);
 
     if !config.log.time {

@@ -47,6 +47,26 @@ impl ServerState {
             panic!("No machine ID specified!");
         }
 
+        let nats_opts = {
+            let mut opts = async_nats::ConnectOptions::new()
+                .name(format!("aura-{}-service", config.machine_id))
+                .connection_timeout(config.nats.connection_timeout)
+                .request_timeout(Some(config.nats.request_timeout))
+                .subscription_capacity(config.nats.subscription_capacity);
+
+            let token = tokio::fs::read_to_string(&config.nats.token)
+                .await
+                .expect("Failed to read NATS token")
+                .trim()
+                .to_string();
+
+            if !token.is_empty() {
+                opts = opts.token(token);
+            }
+
+            opts
+        };
+
         Self {
             database: Database::connect().await,
             emails: Arc::new(EmailRegistry::new().await),
@@ -55,17 +75,9 @@ impl ServerState {
             id_factory: IdFactory::new(config.machine_id.parse().expect("Invalid machine ID")),
             cooldown: Arc::new(CooldownManager::new()),
             status: Arc::new(Mutex::new(ServerStatus::new())),
-            nats: async_nats::connect_with_options(
-                &config.nats.addr,
-                async_nats::ConnectOptions::new()
-                    .name(format!("aura-{}-service", config.machine_id))
-                    .connection_timeout(config.nats.connection_timeout)
-                    .request_timeout(Some(config.nats.request_timeout))
-                    .subscription_capacity(config.nats.subscription_capacity)
-                    .token(config.nats.token.clone()),
-            )
-            .await
-            .expect("Failed to connect to NATS"),
+            nats: async_nats::connect_with_options(&config.nats.addr, nats_opts)
+                .await
+                .expect("Failed to connect to NATS"),
         }
     }
 
